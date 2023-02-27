@@ -1,0 +1,204 @@
+---
+title: "SFA2 - prerocessing"
+author: "Cassandra Wattenburger"
+date: "9/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+library("ape")
+library("phyloseq")
+
+sessionInfo()
+```
+
+# Import data
+
+* counts
+* taxonomy
+* tree
+* meta
+
+```{r}
+count <- read_tsv(file="../data_amplicon/NIFA2/final/NIFA2.counts-final.tsv")
+tax <- read_tsv(file="../data_amplicon/NIFA2/final/NIFA2.taxonomy-final.tsv")
+tree <- read.tree(file="~/SFA/data_amplicon/SFA2_full/tree/SFA2_full.tree-final.nwk")
+meta <- read_tsv("../NIFA_metadata.tsv") %>% 
+  mutate(SampleID = as.character(SampleID))
+```
+
+# Import into phyloseq
+
+```{r}
+# Reformat and import count table
+count_matrix <- count %>%
+  column_to_rownames(var="ASV") %>%
+  rename_with(~ gsub("(.+)", "sa\\1", .x)) %>%
+  as.matrix()
+
+phy_count <- otu_table(count_matrix, taxa_are_rows=TRUE)
+
+# Reformat and import taxonomy table
+tax_matrix <- tax %>%
+  mutate(dummy=ASV) %>% 
+  column_to_rownames(var="dummy") %>% 
+  as.matrix()
+
+phy_tax <- tax_table(tax_matrix)
+
+# Metadata import
+meta_fix <- meta %>% 
+  mutate(dummy=SampleID) %>%
+  column_to_rownames(var="dummy")
+
+phy_meta <- sample_data(meta_fix)
+
+# Create phyloseq object
+physeq <- phyloseq(phy_count, phy_tax, phy_meta, tree)
+
+physeq
+```
+
+# Remove non-prokaryotic ASVs
+
+Mitochondrial, chloroplast, protist, and unknown domain/phylum sequences.
+
+```{r}
+# Remove non-prokaryotic ASVs
+physeq2 <- subset_taxa(physeq, !(Order=="Chloroplast" | Family=="Mitochondria" | Domain=="Unassigned" | 
+                                   Domain=="putative Unassigned" | Domain=="putative Bacteria" | Phylum == "unclassified Bacteria"))
+physeq2
+```
+
+# Sparcity filter
+
+Keep only ASVs that occur in at least three samples.
+
+```{r}
+# Convert counts to 0 or 1 based on presence in sample
+physeq_presabs <- transform_sample_counts(physeq2, function(x) ifelse(x > 0, 1, 0))
+  
+# Prune taxa that occur in less than three samples
+physeq_presabs2 <- prune_taxa(taxa_sums(physeq_presabs) > 2, physeq_presabs) 
+
+sparse_pass_asvs <- taxa_names(physeq_presabs2)
+
+physeq3 <- prune_taxa(sparse_pass_asvs, physeq2)
+physeq3
+```
+
+# Resequenced samples comparison
+
+Compare sequence depth, Aquifex spike-in proportion, ASV richness.
+
+Calculate read depth:
+
+```{r}
+# Extract count and metadata from processed phyloseq object
+count_processed <- data.frame(otu_table(physeq3))
+
+meta_processed <- data.frame(sample_data(physeq3)) %>% 
+  select(everything(), -SampleID) %>% 
+  rownames_to_column(var="SampleID")
+
+# Calculate read depth per sample
+read_depth <- count_processed %>%
+  colSums() %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var="SampleID") %>% 
+  inner_join(meta_processed) %>% 
+  rename_at('.', ~'reads')
+  
+# Visualize
+read_depth %>%
+  mutate(Replicate = as_factor(Replicate)) %>%
+  #filter(Type != "pcr_control") %>%
+  ggplot(aes(x=reorder(SampleID, -reads), y=reads, fill=Replicate)) +
+  geom_col() +
+  geom_hline(yintercept=9000) +
+  labs(x="Sample", y="Reads") +
+  theme_test()
+```
+
+```{r}
+read_depth %>% filter(reads < 9000)
+```
+
+# Rarefy
+
+Rarefy to 8770, lose no samples but negative controls.
+
+```{r}
+set.seed(3)
+
+physeq_rare <- rarefy_even_depth(physeq3, sample.size=8770)
+```
+
+# Save preprocessed count data
+
+Warning: Aquifex internal standard not removed.
+
+```{r, eval=FALSE}
+# Rarefied
+saveRDS(physeq_rare, file="../data_intermediate/NIFA_physeq_rare.rds")
+
+# Not rarefied
+saveRDS(physeq3, file="../data_intermediate/NIFA_physeq_unrare.rds")
+```
+
+# Normalize to the internal standard
+
+Taxon counts / Aquifex counts in each sample
+
+```{r}
+# Extract count data from rarefied phyloseq object
+count_rare <- data.frame(otu_table(physeq_rare)) %>% 
+  rownames_to_column(var="ASV") %>% 
+  pivot_longer(!ASV, names_to="SampleID", values_to="count")
+
+# Aquifex internal std ASVs
+aqui_asvs <- filter(tax, Genus == "Aquifex")
+aqui_asvs <- as.character(aqui_asvs$ASV)
+
+# Combine int std ASVs into one ASV
+count_stdsum <- count_rare %>% 
+  mutate(ASV_std = if_else(ASV %in% aqui_asvs, "int_std", ASV)) %>%
+  group_by(SampleID, ASV_std) %>% 
+  summarize(count = sum(count)) %>% 
+  ungroup()
+
+# Divide taxa counts by internal std counts in each sample
+count_norm <- count_stdsum %>% 
+  pivot_wider(SampleID, names_from = ASV_std, values_from = count) %>%
+  mutate(across(-SampleID, ~ .x/int_std, {.col})) %>%
+  select(-int_std) # remove Aquifex ASVs
+
+# Merge and reformat
+norm_meta <- count_norm %>% 
+  pivot_longer(-SampleID, names_to="ASV", values_to="norm_abund") %>% 
+  inner_join(meta_processed, by="SampleID") %>% 
+  select(SampleID, Microcosm, ASV, Soil, Isotope, Replicate, Time_point, Day, norm_abund)
+
+# Remove samples with infinite values
+norm_meta <- norm_meta[!is.infinite(norm_meta$norm_abund),] %>% 
+  mutate(SampleID = gsub("sa(.+)", "\\1", SampleID), # change back to numeric
+         SampleID = as.numeric(SampleID))
+```
+
+# Save normalized data
+
+```{r, eval=FALSE}
+# Save normalized abundances
+saveRDS(norm_meta, file="../data_intermediate/NIFA_normalized.rds")
+```
+

@@ -1,0 +1,185 @@
+---
+title: "Untitled"
+author: "Cassandra Wattenburger"
+date: "2/17/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+
+sessionInfo()
+```
+
+# Import data
+
+```{r}
+# Growth estimates
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+
+# Death estimates
+death <- readRDS("../data_intermediate/NIFA_dests_final_ind.rds")
+
+# Paprica estimates
+pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+
+# Prepped normalized abundnace data
+abund <- readRDS("../data_intermediate/NIFA_norm_prepped.rds")
+
+# metadata
+meta <- read_tsv("../NIFA_metadata.tsv")
+```
+
+# WIP
+
+Reformat data: 
+
+```{r}
+# Add paprica estimates
+growth2 <- growth %>% 
+  left_join(pap)
+
+death2 <- death %>% 
+  left_join(pap)
+
+# Combine growth and death estimates
+growth_death <- death2 %>%
+  rename(g="h") %>% 
+  bind_rows(growth2) %>% 
+  mutate(type = if_else(slope < 0, "death", "growth"),
+         start_abund_corr = start_abund/n16S,
+         end_abund_corr = end_abund/n16S,
+         change_abund_corr = change_abund/n16S) %>% 
+  select(label:end_day, start_abund_corr, end_abund_corr, change_abund_corr, n16S:type)
+```
+
+```{r}
+# k
+growth_death %>% 
+  ggplot(aes(x=Soil, y=log(abs(k)), color=type)) +
+  geom_boxplot() +
+  theme_test()
+
+# lag
+growth_death %>% 
+  ggplot(aes(x=Soil, y=start_day, color=type)) +
+  geom_boxplot() +
+  theme_test()
+
+# change abundance
+growth_death %>% 
+  ggplot(aes(x=Soil, y=log(abs(change_abund_corr)), color=type)) +
+  geom_boxplot() +
+  #geom_hline(yintercept = 0, linetype=2, color="gray") +
+  theme_test()
+```
+
+Community-level:
+
+```{r}
+# Average across ASVs per replicate
+growth_death_com <- growth_death %>% 
+  group_by(Soil, Replicate, type) %>% 
+  summarize(k = mean(k),
+            g = mean(g),
+            start_day = mean(start_day, na.rm=TRUE),
+            end_day = mean(end_day, na.rm=TRUE),
+            start_abund_corr = mean(start_abund_corr, na.rm=TRUE),
+            end_abund_corr = mean(end_abund_corr, na.rm=TRUE),
+            change_abund_corr = mean(change_abund_corr, na.rm=TRUE),
+            n16S = mean(n16S, na.rm=TRUE),
+            genome_size = mean(genome_size, na.rm=TRUE),
+            npaths_actual = mean(npaths_actual, na.rm=TRUE),
+            nec_actual = mean(nec_actual, na.rm=TRUE)) %>% 
+  ungroup()
+
+# Visualize
+growth_death_com %>% 
+  pivot_longer(cols = -c(Soil, Replicate, type), names_to = "variable", values_to = "value") %>% 
+  ggplot(aes(x=type, y=abs(value), color=Soil)) +
+  geom_jitter(width=0.1) +
+  facet_wrap(~variable, scales="free") +
+  theme_test()
+```
+
+ASV level:
+
+```{r}
+# Average across replicates per ASV
+growth_death_asv <- growth_death %>% 
+  group_by(Soil, ASV, type) %>% 
+  summarize(k = mean(k),
+            g = mean(g),
+            start_day = mean(start_day, na.rm=TRUE),
+            end_day = mean(end_day, na.rm=TRUE),
+            start_abund_corr = mean(start_abund_corr, na.rm=TRUE),
+            end_abund_corr = mean(end_abund_corr, na.rm=TRUE),
+            change_abund_corr = mean(change_abund_corr, na.rm=TRUE),
+            n16S = mean(n16S, na.rm=TRUE),
+            genome_size = mean(genome_size, na.rm=TRUE),
+            npaths_actual = mean(npaths_actual, na.rm=TRUE),
+            nec_actual = mean(nec_actual, na.rm=TRUE)) %>% 
+  ungroup()
+
+# Visualize
+growth_death_asv %>% 
+  pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
+  ggplot(aes(x=type, y=abs(value), color=Soil)) +
+  geom_boxplot() +
+  facet_wrap(~variable, scales="free") +
+  theme_test()
+
+growth_death_asv %>% 
+  pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
+  ggplot(aes(x=type, y=log(abs(value)), color=Soil)) +
+  geom_boxplot() +
+  facet_wrap(~variable, scales="free") +
+  theme_test()
+
+growth_death_asv %>% 
+  pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
+  filter(type=="growth") %>% 
+  ggplot(aes(abs(value), color=Soil)) +
+  geom_density() +
+  facet_wrap(~variable, scales="free") +
+  labs(title="Growth") +
+  theme_test()
+
+growth_death_asv %>% 
+  pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
+  filter(type=="growth") %>% 
+  ggplot(aes(log(abs(value)), color=Soil)) +
+  geom_density() +
+  facet_wrap(~variable, scales="free") +
+  labs(title="Growth - log") +
+  theme_test()
+
+growth_death_asv %>% 
+  pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
+  filter(type=="death") %>% 
+  ggplot(aes(abs(value), color=Soil)) +
+  geom_density() +
+  facet_wrap(~variable, scales="free") +
+  labs(title="Death") +
+  theme_test()
+
+growth_death_asv %>% 
+  pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
+  filter(type=="death") %>% 
+  ggplot(aes(log(abs(value)), color=Soil)) +
+  geom_density() +
+  facet_wrap(~variable, scales="free") +
+  labs(title="Death - log") +
+  theme_test()
+```
+
+

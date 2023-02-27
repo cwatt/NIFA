@@ -1,0 +1,142 @@
+---
+title: "GCMS CO2 standards test run"
+author: "Cassandra Wattenburger"
+date: "4/28/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+# Import libraries, clear working directory
+
+```{r}
+library(tidyverse)
+
+sessionInfo()
+
+rm(list=ls())
+```
+
+# Import and reformat GCMS data
+
+Note: Files exported from Shimadzu PostRun Analysis software as ASCII. In GCMS Postrun Analysis software highlight data files > right click > Output Items > Check Compound Quantitative Result and Qualitative Peak Table with Tab delimitation.
+
+This script is built to run on data that has been stored in a project directory containing a "data" directory with sub-directories for each time point that .txt files with the GCMS output for each sample.
+
+```{r}
+# Create lists of .txt files
+files <- list.files(path="../data_gcms/stds_042722", pattern="*.txt", full.names=TRUE, recursive=FALSE)
+
+# Extract area data
+# TIC, w/z44 (12C), w/z45 (13C)
+
+# Construct data frame containing all data
+area_df = tibble() # initialize empty tibble
+
+for (x in files) { # for each file
+    # Create sample names based on file names
+    # Strips the rest of the path from the sample name at the end
+    name = str_remove(x, "../data_gcms/stds_042722/") %>%
+      str_remove(".txt")
+    
+    # Isolate the area data and clean up
+    dat = read_tsv(x, skip=7, col_names=TRUE) %>%
+      select("Measurement" = Name, Area) %>% # keep only the name of sample and the area measurements collected
+      drop_na() %>%
+      mutate(Measurement = case_when(Measurement == "TIC" ~ "Ctotal", # more explicit measurement labels
+                              Measurement == "m/z 44" ~ "C12",
+                              Measurement == "m/z 45" ~ "C13"),
+             Sample = name)
+    area_df = rbind(area_df, dat) # add to master data frame
+}
+```
+
+# Calculate total area
+
+TIC area often does not record (not sure why), so we will use 12C + 13C instead which is a close approximation.
+
+```{r}
+# Calculate
+area_df = area_df %>%
+  pivot_wider(names_from = Measurement, values_from = Area) %>%
+  mutate(C1213 = C12+C13)
+```
+
+# Standards
+
+Separate from samples/atmosphere measurements
+
+```{r}
+std_df = area_df %>%
+  filter(str_detect(Sample, "std"))
+```
+
+Add ppm:
+
+```{r}
+# Calculate adjusted areas
+std_df = std_df %>%
+  mutate(ppm = case_when(Sample == "std0" ~ 0, # add ppm
+                         Sample == "std1" ~ 769,
+                         Sample == "std2" ~ 1538,
+                         Sample == "std3" ~ 3077,
+                         Sample == "std4" ~ 7692,
+                         Sample == "std5" ~ 15385,
+                         Sample == "std6" ~ 30769,
+                         Sample == "std7" ~ 76923,
+                         Sample == "std7.5" ~ 153856,
+                         Sample == "std8" ~ 230769,
+                         Sample == "std8.5" ~ 307692,
+                         Sample == "std9" ~ 384615)) 
+  
+```
+
+Visualize:
+
+```{r}
+std_df %>%
+  ggplot(aes(x=ppm, y=C1213)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  theme_test()
+```
+
+### Calibration curve
+
+```{r}
+# Linear regression
+summary(lm(C1213 ~ ppm, std_df))
+```
+
+Looks good.
+
+# Ambient samples
+
+Isolate ambient samples:
+
+```{r}
+amb_df = anti_join(area_df, std_df) %>%
+  mutate(dummy_ppm = 0) # dummy ppm for graphing with standards on ppm axis
+```
+
+Visualize a/g standards:
+
+```{r}
+amb1 <- as.numeric(amb_df[1,5])
+amb2 <- as.numeric(amb_df[2,5])
+
+std_df %>%
+  ggplot(aes(x=ppm, y=C1213)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  geom_hline(yintercept = amb1, linetype=2) +
+  geom_hline(yintercept = amb2, linetype=2) +
+  theme_test()
+```
+
+Atmospheric samples are very low, as to be expected. Ambient 2 is elevated, likely due to slight carry over from std 6.
+

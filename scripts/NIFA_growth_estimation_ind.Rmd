@@ -1,0 +1,994 @@
+---
+title: "NIFA - growth estimations"
+author: "Cassandra Wattenburger"
+date: "01/12/23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+library("trelliscopejs")
+
+sessionInfo()
+```
+
+# Import data
+
+* Normalized count data
+* Taxonomy table
+* Metadata
+
+```{r}
+# Count data
+norm <- readRDS("../data_intermediate/NIFA_normalized.rds")
+
+# Taxonomy
+tax <- read_tsv(file="../data_amplicon/NIFA2/final/NIFA2.taxonomy-final.tsv")
+
+# Metadata
+meta <- read_tsv("../NIFA_metadata.tsv")
+
+dim(norm)
+```
+
+# Prepare data
+
+Remove non-present taxa:
+
+```{r}
+norm_prep <- filter(norm, norm_abund != 0) 
+  
+dim(norm_prep)
+```
+
+Remove 13C samples:
+
+```{r}
+norm_prep <- filter(norm_prep, Isotope=="12C")
+```
+
+Remove taxa that didn't occur in at least 4 time points:
+
+```{r}
+# Identify ASVs that appeared less than 4 times in time series
+occurences <- norm_prep %>% 
+  group_by(ASV, Soil, Replicate) %>% 
+  summarize(occurs = n()) %>% 
+  filter(occurs > 3) %>% 
+  ungroup()
+
+# Filter
+norm_prep <- inner_join(norm_prep, occurences, by=c("ASV", "Soil", "Replicate")) %>% 
+  select(everything(), -occurs)
+
+dim(norm_prep)
+```
+
+Natural log transform:
+
+```{r}
+norm_prep <- norm_prep %>% 
+  mutate(ln_norm_abund = log(norm_abund))
+
+dim(norm_prep)
+```
+
+Create unique label for each ASV and time series:
+
+```{r}
+norm_prep <- norm_prep %>%
+  mutate(label = paste0(Soil, Replicate, "_", ASV))
+
+dim(norm_prep)
+```
+
+Save prepped data:
+
+```{r, eval=FALSE}
+norm_prep_save <- norm_prep %>% 
+  select(label, Soil, Isotope, Replicate, Time_point, Day, norm_abund)
+  
+saveRDS(norm_prep_save, "../data_intermediate/NIFA_norm_prepped.rds")
+```
+
+# Estimate growth
+
+Prepare data:
+
+```{r}
+# Rename columns to match algorithm reqiurements
+norm_prepped <- norm_prep %>% 
+  select(label, Soil, Replicate, time=Day, ASV, abund=ln_norm_abund) %>% 
+  arrange(time) # order by time
+```
+
+Create growth parameter saving function:
+
+```{r}
+# Function: Saves chosen growth estimate from below algorhithm
+save_fit <- function(label, start, end, df_sub, output) {
+  # Save estimate info
+  est <- NULL; coeff <- NULL; yint <- NULL; residuals <- NULL; pval <- NULL; thisrow <- data.frame() # clear previous
+  est <- lm(abund ~ time, data=df_sub[start:end,])
+  coeff <- as.numeric(est$coefficients[2])
+  yint <- as.numeric(est$coefficients[1])
+  residuals <- sum(abs(resid(est)))
+  pval <- summary(est)$coefficients[2,4]
+  thisrow <- data.frame(label, start, end, coeff, yint, pval, residuals)
+  output <- bind_rows(output, thisrow)
+  return(output)
+}
+```
+
+```{r, eval=FALSE}
+# Testing subset for faster troubleshooting
+label_test <- c(unique(norm_prepped$label)[1:100], unique(norm_prepped$label)[4800:4900])
+
+norm_test <- filter(norm_prepped, label %in% label_test)
+```
+
+Estimate:
+
+SLOW STEP
+
+```{r, eval=FALSE}
+# Estimate growth
+
+## Requires a dataframe with columns containing a unique label for each data point, abundance values, time points
+## df = data frame containing time series with abundance values (ln transformed), long format
+## df must contain columns named:
+### label = column with unique identifier for each time series
+### abund = column with abundance values at each time point
+### time = column with time point values
+df <- norm_prepped
+growth_estimates <- data.frame()
+for (label in as.character(unique(df$label))) {
+
+  # Subset one time series using the label
+  df_sub <- data.frame()
+  df_sub <- df[df$label==label,] 
+  stop <- FALSE
+    
+  # Sliding window (at least four time points in window)
+  for (start in 1:(nrow(df_sub) - 3)) { 
+    stop <- FALSE
+    for (end in (start + 3):nrow(df_sub)) {
+      if (stop == TRUE) {break}
+     
+      # Fit linear model to the window
+      window_lm <- NULL; window_p <- NULL; window_coeff <- NULL
+      window_lm <- lm(abund ~ time, data = df_sub[start:end,])
+      window_p <- summary(window_lm)$coefficients[2,4]
+      window_coeff <- window_lm$coefficients[2]
+  
+      # If a suitable fit is found and more time points exist that were not included, try extending the window
+      if (window_p <= 0.05 & window_coeff > 0 & end < nrow(df_sub)) {
+        for (extend_end in ((end+1):nrow(df_sub))) {
+          if (stop == TRUE) {break}
+            
+          # Fit linear model to previous, non-extended window
+          prevwindow_lm <- NULL; prevwindow_p <- NULL; prevwindow_coeff <- NULL 
+          prevwindow_lm <- lm(abund ~ time, data = df_sub[start:(extend_end - 1),])
+          prevwindow_p <- summary(prevwindow_lm)$coefficients[2,4]
+          prevwindow_coeff <- prevwindow_lm$coefficients[2]
+            
+          # Fit linear model to the extended window
+          newwindow_lm <- NULL; newwindow_p <- NULL; newwindow_coeff <- NULL 
+          newwindow_lm <- lm(abund ~ time, data = df_sub[start:extend_end,])
+          newwindow_p <- summary(newwindow_lm)$coefficients[2,4]
+          newwindow_coeff <- newwindow_lm$coefficients[2]
+            
+          # If see improvement and can add more data, continue extending the window
+          if (newwindow_p <= prevwindow_p & newwindow_coeff > 0 & extend_end < nrow(df_sub)) {
+            next
+          }
+            
+          # If no improvement, save the previous fit
+          else if (newwindow_p > prevwindow_p & prevwindow_coeff > 0 & extend_end < nrow(df_sub)) {
+            end <- extend_end - 1
+            growth_estimates <- save_fit(label, start, end, df_sub, growth_estimates)
+            stop <- TRUE
+          }
+            
+          # If see improvement (or no harm) but no more data points to fit, save the extended fit
+          else if (newwindow_p <= prevwindow_p & newwindow_coeff > 0 & extend_end == nrow(df_sub)) {
+            end <- extend_end
+            growth_estimates <- save_fit(label, start, end, df_sub, growth_estimates)
+            stop <- TRUE
+          } 
+        }
+      }
+        
+      # If no more data available to add to model, save the fit
+      else if (window_p <= 0.05 & window_coeff > 0 & end == nrow(df_sub)) {
+        growth_estimates <- save_fit(label, start, end, df_sub, growth_estimates)
+        stop <- TRUE
+      }
+    }
+  }
+}
+
+dim(growth_estimates)
+```
+
+```{r, eval=FALSE}
+saveRDS(growth_estimates, "../data_intermediate/NIFA_grests_raw_ind.Rmd")
+```
+
+```{r}
+# Load raw estimates
+growth_estimates <- readRDS("../data_intermediate/NIFA_grests_raw_ind.Rmd")
+```
+
+### Quality filter
+
+* Remove essentially perfect fits
+* Remove pvalue > 0.05
+* Remove slope < 0
+* Remove estimates with less than 4 time points
+
+Note: I can't find any guidance on how to determine whether or not a fit is "perfect" but I know that the residuals are essentially equal to 0 for perfect fits. I'll use 0.0001 as a filtering threshold for removal.
+
+```{r}
+# Remove "perfect" fits as precaution
+growth_estimates <- filter(growth_estimates, residuals >= 0.0001)
+dim(growth_estimates)
+
+# Remove any p-values > 0.05 for safety
+growth_estimates <- filter(growth_estimates, pval < 0.05)
+dim(growth_estimates)
+
+# Remove negative slopes for safety
+growth_estimates <- filter(growth_estimates, coeff > 0)
+dim(growth_estimates)
+
+# I noticed on a previous run-through that short (4 time points) estimates are spurious, remove those
+growth_estimates <- growth_estimates %>% 
+  mutate(length = end-start+1) %>% 
+  filter(length > 3)
+
+dim(growth_estimates)
+```
+
+### Select best fit for each time series
+
+* Lowest p-value of the slope
+
+```{r}
+# Choose lowest p-value window
+lowest_pvals <- growth_estimates %>% 
+  group_by(label) %>% 
+  summarize(pval = min(pval)) %>% 
+  ungroup()
+
+dim(lowest_pvals)
+
+# Filter chosen estimates
+growth_estimates <- growth_estimates %>% 
+  semi_join(lowest_pvals)
+
+dim(growth_estimates)
+```
+
+# False positive control
+
+Histogram of quality filtered p-values from actual estimates:
+
+```{r}
+hist(growth_estimates$pval, xlab="P-values", main="Histogram of quality filtered p-values")
+```
+
+See: http://varianceexplained.org/statistics/interpreting-pvalue-histogram/
+
+I'm choosing to use a permutation approach where I use my growth estimating algorhithm on randomly generated data with characteristics of the real data. I'll use this false positive information to filter my real estimates. Traditional false positive control methods are far too conservative for my dataset.
+
+### Simulate random data
+
+Completely random data designed to reflect actual data, if we detect "significant" growth rate estimates from this, we must control for that, because the same thing can happen in our actual data.
+
+Information about real dataset to use for simulating random data:
+
+* number of time points
+* min and max of abundance
+
+```{r, results="show"}
+# Minimum and maximum relational abundances
+min_abund <- min(norm_prepped$abund)
+max_abund <- max(norm_prepped$abund)
+avg_abund <- mean(norm_prepped$abund)
+sd_abund <- sd(norm_prepped$abund)
+
+hist(norm_prepped$abund)
+
+# Number of time points
+num_tps <- norm_prepped %>% 
+  group_by(label) %>% 
+  summarize(num_points = n()) %>% 
+  ungroup()
+
+min_pts <- min(num_tps$num_points)
+max_pts <- max(num_tps$num_points)
+avg_pts <- mean(num_tps$num_points)
+sd_pts <- sd(num_tps$num_points)
+
+hist(num_tps$num_points)
+```
+
+Simulate random time series:
+
+```{r}
+set.seed(2023)
+
+# Set time points
+tps <- unique(meta$Day)
+tps <- na.omit(tps)
+
+# Generate using normal distributions
+sim_data <- data.frame()
+cont <-  TRUE
+counter <- 1
+while (cont == TRUE) {
+  # Stop loop once 1000 simulations have been created
+  if (counter == 1001) {
+    cont <-  FALSE
+  } 
+  else {
+    thisrow <- data.frame(); hold <- NULL; rand_abund = NULL; rand_pts = NULL; rand_days = NULL # reset values
+    # Generate number of time points
+    #rand_pts <- ceiling(rnorm(1, mean=avg_pts, sd=sd_pts))
+    rand_pts <- sample(num_tps$num_points, 1) # sampling from the actual array of time points
+    # Make sure number of tps doesn't fall outside min/max
+    if (rand_pts <= min_pts | rand_pts >= max_pts) {
+      next
+      }
+    else {
+      # Generate abundance for each point
+      rand_abund <- rnorm(rand_pts, mean=avg_abund, sd=sd_abund) 
+      # Make sure abundances don't fall outside min/max
+      if (min(rand_abund) <= min_abund | max(rand_abund) >= max_abund) {
+        next
+      }
+      else {
+        # Assign a day to each point
+        rand_day <- sort(sample(tps, size=rand_pts, replace=FALSE))
+        hold <- cbind(rep(counter, rand_pts), rand_day, rand_abund)
+        sim_data <- rbind(sim_data, hold)
+        counter <- counter + 1 # count successfully simulated time series
+      }
+    }
+  }
+}
+
+colnames(sim_data)[1] <- "simulation"
+
+# Compare simulation to actual data
+# Abundances
+hist(sim_data$rand_abund)
+
+# Number of data points
+sim_num_points <- sim_data %>% 
+  group_by(simulation) %>% 
+  summarize(num_pts = n()) %>% 
+  ungroup() %>% 
+  mutate(num_pts = as.numeric(num_pts))
+hist(sim_num_points$num_pts)
+```
+
+Save simulated data:
+
+* for reproducibility
+
+```{r, eval=FALSE}
+saveRDS(sim_data, file="../data_intermediate/NIFA_simulated_ind.rds")
+```
+
+```{r}
+sim_data <- readRDS(file="../data_intermediate/NIFA_simulated_ind.rds")
+```
+
+View some simulated time series:
+
+```{r}
+# Choose randomly
+sim_data %>%
+  filter(simulation == sample(1:1000, 1)) %>% 
+  ggplot(aes(x=rand_day, y=rand_abund)) +
+    geom_point() +
+    geom_line() +
+    theme_test()
+
+sim_data %>%
+  filter(simulation == sample(1:1000, 1)) %>% 
+  ggplot(aes(x=rand_day, y=rand_abund)) +
+    geom_point() +
+    geom_line() +
+    theme_test()
+
+sim_data %>%
+  filter(simulation == sample(1:1000, 1)) %>% 
+  ggplot(aes(x=rand_day, y=rand_abund)) +
+    geom_point() +
+    geom_line() +
+    theme_test()
+
+sim_data %>%
+  filter(simulation == sample(1:1000, 1)) %>% 
+  ggplot(aes(x=rand_day, y=rand_abund)) +
+    geom_point() +
+    geom_line() +
+    theme_test()
+```
+
+### Estimate "growth" on simulated data
+
+Same algorithm.
+
+```{r, eval=FALSE}
+# Prep simulated data (rename columns)
+sim_prepped <- sim_data %>% 
+  select(label=simulation, abund=rand_abund, time=rand_day)
+
+# Run algorithim
+df <- sim_prepped
+sim_estimates <- data.frame()
+for (label in as.character(unique(df$label))) {
+    
+  # Subset one time series using the label
+  df_sub <- data.frame()
+  df_sub <- df[df$label==label,] 
+  stop <- FALSE
+    
+  # Sliding window
+  for (start in 1:(nrow(df_sub) - 3)) {
+    stop <- FALSE
+    for (end in (start + 3):nrow(df_sub)) {
+      if (stop == TRUE) {break}
+     
+      # Fit linear model to the window
+      window_lm <- NULL; window_p <- NULL; window_coeff <- NULL
+      window_lm <- lm(abund ~ time, data = df_sub[start:end,])
+      window_p <- summary(window_lm)$coefficients[2,4]
+      window_coeff <- window_lm$coefficients[2]
+  
+      # If a suitable fit is found and more time points exist that were not included, try extending the window
+      if (window_p <= 0.05 & window_coeff > 0 & end < nrow(df_sub)) {
+        for (extend_end in ((end+1):nrow(df_sub))) {
+          if (stop == TRUE) {break}
+            
+          # Fit linear model to previous, non-extended window
+          prevwindow_lm <- NULL; prevwindow_p <- NULL; prevwindow_coeff <- NULL 
+          prevwindow_lm <- lm(abund ~ time, data = df_sub[start:(extend_end - 1),])
+          prevwindow_p <- summary(prevwindow_lm)$coefficients[2,4]
+          prevwindow_coeff <- prevwindow_lm$coefficients[2]
+            
+          # Fit linear model to the extended window
+          newwindow_lm <- NULL; newwindow_p <- NULL; newwindow_coeff <- NULL 
+          newwindow_lm <- lm(abund ~ time, data = df_sub[start:extend_end,])
+          newwindow_p <- summary(newwindow_lm)$coefficients[2,4]
+          newwindow_coeff <- newwindow_lm$coefficients[2]
+            
+          # If see improvement and can add more data, continue extending the window
+          if (newwindow_p <= prevwindow_p & newwindow_coeff > 0 & extend_end < nrow(df_sub)) {
+            next
+          }
+            
+          # If no improvement, save the previous fit
+          else if (newwindow_p > prevwindow_p & prevwindow_coeff > 0 & extend_end < nrow(df_sub)) {
+            end <- extend_end - 1
+            sim_estimates <- save_fit(label, start, end, df_sub, sim_estimates)
+            stop <- TRUE
+          }
+            
+          # If see improvement (or no harm) but no more data points to fit, save the extended fit
+          else if (newwindow_p <= prevwindow_p & newwindow_coeff > 0 & extend_end == nrow(df_sub)) {
+            end <- extend_end
+            sim_estimates <- save_fit(label, start, end, df_sub, sim_estimates)
+            stop <- TRUE
+          } 
+        }
+      }
+        
+      # If no more data available to add to model, save the fit
+      else if (window_p <= 0.05 & window_coeff > 0 & end == nrow(df_sub)) {
+        sim_estimates <- save_fit(label, start, end, df_sub, sim_estimates)
+        stop <- TRUE
+      }
+    }
+  }
+}
+dim(sim_estimates)
+```
+
+Save simulated estimates:
+
+```{r, eval=FALSE}
+saveRDS(sim_estimates, "../data_intermediate/NIFA_simests_raw_ind.Rmd")
+```
+
+```{r}
+sim_estimates <- readRDS("../data_intermediate/NIFA_simests_raw_ind.Rmd")
+```
+
+### Quality filter
+
+* Remove essentially perfect fits
+* Remove pvalue > 0.05
+* Remove slope < 0
+* remove length < 4
+
+Note: I can't find any guidance on how to determine whether or not a fit is "perfect" but I know that the residuals are essentially equal to 0 for perfect fits. I'll use 0.0001 as a filtering threshold for removal.
+
+```{r}
+# Remove "perfect" fits as precaution
+sim_estimates <- filter(sim_estimates, residuals >= 0.0001)
+dim(sim_estimates)
+
+# Remove any p-values > 0.05 for safety
+sim_estimates <- filter(sim_estimates, pval < 0.05)
+dim(sim_estimates)
+
+# Remove negative slopes for safety
+sim_estimates <- filter(sim_estimates, coeff > 0)
+dim(sim_estimates)
+
+# Remove short (3 tps) estimates
+sim_estimates <- sim_estimates %>% 
+  mutate(length = end-start+1) %>% 
+  filter(length > 3)
+
+dim(sim_estimates)
+```
+
+### Select best fit for each time series
+
+* Lowest p-value of the slope
+
+```{r}
+# Choose lowest p-value window
+sim_lowest_pvals <- sim_estimates %>% 
+  group_by(label) %>% 
+  summarize(pval = min(pval)) %>% 
+  ungroup()
+
+dim(sim_lowest_pvals)
+
+# Filter chosen estimates
+sim_estimates <- sim_estimates %>% 
+  semi_join(sim_lowest_pvals)
+
+dim(sim_estimates)
+```
+
+False positive rates:
+
+```{r}
+# False positives
+a <- nrow(sim_estimates[sim_estimates$pval <= 0.05,])
+b <- nrow(sim_estimates[sim_estimates$pval <= 0.025,])
+c <- nrow(sim_estimates[sim_estimates$pval <= 0.01,])
+d <- nrow(sim_estimates[sim_estimates$pval <= 0.005,])
+e <- nrow(sim_estimates[sim_estimates$pval <= 0.001,])
+f <- nrow(sim_estimates[sim_estimates$pval <= 0.0005,])
+
+false_pos <- data.frame(c(0.05, 0.025, 0.01, 0.005, 0.001, 0.0005), c(a,b,c,d,e,f))
+colnames(false_pos)=c("pvalue","false")
+
+ggplot(false_pos, aes(x=pvalue, y=false)) +
+  geom_point() +
+  geom_smooth(method="lm", linetype=2) +
+  labs(title="Relationship between p-value and number of false positives", x="P-value", y="False positives") +
+  theme_test()
+```
+
+Find 10%, 5%, and 1% false positives:
+
+```{r}
+# Guess and check
+nrow(sim_estimates[sim_estimates$pval <= 0.007,]) # ~10% (100/1000 estimates)
+nrow(sim_estimates[sim_estimates$pval <= 0.003,]) # ~5% (50/1000 estimates)
+nrow(sim_estimates[sim_estimates$pval <= 0.0003,]) # ~1% (10/1000 estimates) 
+
+false10_pval <- 0.007
+false5_pval <- 0.003
+false1_pval <- 0.0003
+```
+
+### Filter by false positive rate
+
+Number of estimates in each category:
+
+```{r, restuls="show"}
+# ~10% false positives
+growth_falsepos10 <- subset(growth_estimates, pval <= false10_pval)
+nrow(growth_falsepos10)
+
+# ~5% false positives
+growth_falsepos5 <- subset(growth_estimates, pval <= false5_pval)
+nrow(growth_falsepos5)
+
+# 1%
+growth_falsepos1 <- subset(growth_estimates, pval <= false1_pval)
+nrow(growth_falsepos1)
+```
+
+# Choose FPR
+
+10% false positive rate:
+
+```{r}
+set.seed(100)
+
+# 10% false positive rate
+labels10 <- as.character(growth_falsepos10$label)
+
+# Randomly plot 10 w/growth estimate
+for (n in 1:10) {
+  # Choose randomly
+  rand_num <- sample(1:nrow(growth_falsepos10), 1)
+  l <- labels10[rand_num]
+  
+  # Estimated growth window
+  start <- growth_falsepos10 %>% 
+    filter(label==l) %>% 
+    .$start
+  
+  end <- growth_falsepos10 %>% 
+    filter(label==l) %>% 
+    .$end
+  
+  # Plot
+  data_sub <- norm_prepped %>% 
+    filter(label == l)
+  plot <- data_sub %>% 
+    ggplot(aes(x=time, y=abund)) +
+    geom_smooth(method="lm", data=data_sub[start:end,], linetype=2) +
+    geom_point() +
+    geom_line() +
+    theme_test()
+  print(plot)
+}
+    
+```
+
+5% false positive rate:
+
+```{r}
+labels5 <- as.character(growth_falsepos5$label)
+
+# Randomly plot 10 w/growth estimate
+for (n in 1:10) {
+  # Choose randomly
+  rand_num <- sample(1:nrow(growth_falsepos5), 1)
+  l <- labels5[rand_num]
+  
+  # Estimated growth window
+  start <- growth_falsepos5 %>% 
+    filter(label==l) %>% 
+    .$start
+  
+  end <- growth_falsepos5 %>% 
+    filter(label==l) %>% 
+    .$end
+  
+  # Plot
+  data_sub <- norm_prepped %>% 
+    filter(label == l)
+  plot <- data_sub %>% 
+    ggplot(aes(x=time, y=abund)) +
+    geom_smooth(method="lm", data=data_sub[start:end,], linetype=2) +
+    geom_point() +
+    geom_line() +
+    theme_test()
+  print(plot)
+}
+    
+```
+
+5% looks better, worth the decrease in estimates imo.
+
+# Calculate growth metrics
+
+### Calculate specific growth rate (k)
+
+Steps:
+
+* Use estimated slope from growth curves to simulate growth over a time interval
+* Use simulated abundances to solve for k
+
+Using estimates filtered at 10% false positives.
+
+Formula: k=(log10(b)-log10(B))*2.303/t
+
+Where k is specific growth rate, B is abundance at beginning, b is abundance at end, and t is the time interval.
+
+I found this guide helpful: http://miller-lab.net/MillerLab/protocols/general-bacteriology/calculating-growth-rate/
+
+```{r}
+# Generate abundances over time interval based on estimated slope
+growth_estimates2 <- data.frame()
+B <- 1 # Start with one bacteria
+for (l in growth_falsepos10$label) {
+  growth_label <- filter(growth_falsepos10, label==l)
+  b <- (growth_label$coeff*3)+1 # abundance three days later
+  k <- (log10(b)-log10(B))*(2.303/3) # calculate k
+  this_row <- cbind(growth_label, k)
+  growth_estimates2 <- rbind(growth_estimates2, this_row)
+}
+```
+
+### Start and end day, change in abundance
+
+```{r}
+# Convert start and end to actual day
+growth_final <- data.frame()
+for (l in as.character(unique(growth_estimates2$label))) {
+  # Isolate timeseries
+  norm_label <- norm_prep %>% 
+    filter(label==l) %>% 
+    arrange(Day)
+  growth_label <- filter(growth_estimates2, label==l)
+  start <- growth_label$start
+  end <- growth_label$end
+  # Start and end day of growth
+  start_day <- norm_label[start,]$Day
+  end_day <- norm_label[end,]$Day
+  # Starting and ending relational abundance
+  start_abund <- norm_label[start,]$norm_abund
+  end_abund <- norm_label[end,]$norm_abund
+  change_abund <- end_abund - start_abund
+  # Save output
+  this_row <- bind_cols(label = as.character(growth_label$label), 
+                        slope = growth_label$coeff, yint = growth_label$yint, k = growth_label$k,
+                        start_pt = growth_label$start, end_pt = growth_label$end,
+                        start_day = start_day, end_day = end_day, 
+                        start_abund = start_abund, end_abund = end_abund, change_abund = change_abund)
+  growth_final <- bind_rows(growth_final, this_row)
+}
+```
+
+## Generation times
+
+Formula: g = ln2/k
+
+Where g is generation or doubling time and k is specific growth rate (per day).
+
+```{r}
+# Calculate doubling time based on k
+g_df <- data.frame()
+for (l in as.character(unique(growth_final$label))) {
+        data_sub <- filter(growth_final, label==l)
+        k <- data_sub$k
+        g <- log(2)/k
+        thisrow <- cbind(data_sub, g)
+        g_df <- rbind(g_df, thisrow)
+}
+
+growth_final2 <- g_df %>% 
+  select(label, slope, yint, k, g, start_pt, end_pt, start_day, end_day, start_abund, end_abund, change_abund)
+
+# Summary
+mean(g_df$g)
+sd(g_df$g)
+min(g_df$g)
+max(g_df$g)
+```
+
+# Tidy up and save data
+
+Growth estimates:
+
+```{r}
+# Add back metadata from label
+growth_tidy <- growth_final2 %>% 
+  # Label sturcture: (soil)(replicate)_(asv)
+  mutate(Soil = gsub("([A|M][a-z]+)([0-3])_(.+)", "\\1", label),
+         Replicate = gsub("([A|M][a-z]+)([0-3])_(.+)", "\\2", label), 
+         Replicate = as.numeric(Replicate),
+         ASV = gsub("([A|M][a-z]+)([0-3])_(.+)", "\\3", label)) %>%
+  select(label, Soil, Replicate, ASV, slope:change_abund)
+
+head(growth_tidy)
+```
+
+```{r, eval=FALSE}
+saveRDS(growth_tidy, file="../data_intermediate/NIFA_grests_final_ind.rds")
+```
+
+# Summary of growth estimates
+
+```{r}
+# Number of estimates per replicate
+growth_tidy %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(total = n()) %>% 
+  ungroup()
+
+# Average estimates per soil
+growth_tidy %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(total=n()) %>% 
+  ungroup() %>%
+  group_by(Soil) %>% 
+  summarize(total_mean = mean(total),
+            total_sd = sd(total))
+
+# Average g per soil
+growth_tidy %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(g_mean = mean(g),
+            g_sd = sd(g)) %>% 
+  ggplot(aes(x=Soil, y=g_mean)) + 
+  geom_point() +
+  theme_test()
+
+# Phyla esitmates
+growth_tidy %>% 
+  inner_join(tax) %>% # add taxonomy
+  group_by(Soil, Replicate, Phylum) %>% 
+  summarize(total = n()) %>% 
+  ungroup() %>% 
+  group_by(Soil, Phylum) %>% 
+  summarize(total_mean = mean(total),
+            total_sd = sd(total)) %>% 
+  arrange(Soil, -total_mean)
+```
+
+# Plot growth estimates
+
+Selected randomly (30):
+
+```{r}
+# Graph 30 random estimates
+set.seed(30)
+label_rand <- sample(unique(growth_tidy$label), 30)
+growth_rand <- filter(growth_tidy, label %in% label_rand)
+
+count <- 0
+labels <- c()
+
+for (l in as.character(growth_rand$label)) {
+  count <- count + 1
+  # Subset time series
+  growth_label <- filter(growth_rand, label==l)
+  norm_label <- filter(norm_prep, label==l) %>% 
+  arrange(Day)
+  # Title information
+  asv <- growth_label$ASV
+  tax_info <- filter(tax, ASV == asv)
+  label <- growth_label$label
+  
+  title <- paste0(count, ". ", tax_info$Phylum, ", ", tax_info$Genus)
+  # Graph with estimate
+  graph <- ggplot(norm_label, aes(x=Day, y=ln_norm_abund)) +
+    geom_point(shape=1, size=3, color="#6F7378") +
+    geom_line(color="#6F7378") +
+    geom_smooth(method="lm", data=norm_label[growth_label$start_pt:growth_label$end_pt,], linetype=2, color="black") +
+    #labs(title=title, x="day", y="ln norm abundance") +
+    labs(title=label, x="day", y="ln norm abund") +
+    theme_test() +
+    theme(title = element_text(size=18),
+        axis.title = element_text(size=16),
+        axis.text = element_text(size=14))
+  
+  # List of labels
+  labels <- c(labels, label)
+  
+  # Print
+  print(graph)
+  
+  # Save to pdf
+  #ggsave(file=paste0("../figures/timeseries/", count, "_", gsub(" ", "", tax_info$Phylum), "_", gsub(" ", "", tax_info$Genus), ".pdf"), graph, device="pdf")
+  }
+```
+
+Plot all growth estimated time series (slowish):
+
+```{r, eval=FALSE}
+count <- 0
+
+for (l in unique(as.character(growth_tidy$label))) {
+  count <- count + 1
+  # Subset time series
+  growth_label <- filter(growth_tidy, label==l)
+  norm_label <- filter(norm_prep, label==l) %>% 
+  arrange(Day)
+  # Title information
+  title <- paste0(count, ". ", l)
+  
+  # Graph with estimate
+  graph <- ggplot(norm_label, aes(x=Day, y=ln_norm_abund)) +
+    geom_point(shape=1, size=3, color="#6F7378") +
+    geom_line(color="#6F7378") +
+    geom_smooth(method="lm", data=norm_label[growth_label$start_pt:growth_label$end_pt,], linetype=2, color="black") +
+    #labs(title=title, x="day", y="ln norm abundance") +
+    labs(title=title, x="day", y="ln norm abund") +
+    theme_test() +
+    theme(title = element_text(size=18),
+        axis.title = element_text(size=16),
+        axis.text = element_text(size=14))
+  
+  # Print
+  print(graph)
+  
+  # Save to pdf
+  #ggsave(file=paste0("../figures/all_timeseries/", count, "_", label, "_west.png"), graph)
+}
+
+```
+
+# Oscillator examples for Luo lab collab.
+
+```{r, eval=FALSE}
+# Hand selected time series
+osc_labels <- c("Meadow3_69099cb548b72b53a244b21b17cab956", "Meadow1_b141176b747d0e6288ba6375d2ce5265", "Ag2_d7d39549f9245a56b1332479acf3d781", "Meadow3_13e479df5562e8e93d620ac363eb9644", "Meadow3_50c0b007718da306461979dcbd90ff3e", "Ag2_13e479df5562e8e93d620ac363eb9644", "Meadow3_a8ea3b851d2843d532ef2868ac83580c", "Ag1_9886ad0b6ae3573f9a97bd756a2fd8bc", "Meadow1_e0066116bade029e912f5c232f75bb22", "Meadow3_ebe11dabecd53e20600923ad5e29780b")
+
+# Isolate time series data
+osc_examples <- norm_prep %>% 
+  filter(label %in% osc_labels) %>% 
+  arrange(label, Day) %>% 
+  select(label, Soil, Replicate, ASV, Day, ln_norm_abund)
+
+# Graphs
+for (l in osc_labels) {
+  count <- count + 1
+  # Subset time series
+  growth_label <- filter(growth_tidy, label==l)
+  norm_label <- filter(norm_prep, label==l) %>% 
+  arrange(Day)
+  # Title information
+  asv <- growth_label$ASV
+  tax_info <- filter(tax, ASV == asv)
+  label <- growth_label$label
+  # Graph with estimate
+  graph <- ggplot(norm_label, aes(x=Day, y=ln_norm_abund)) +
+    geom_point(shape=1, size=3, color="#6F7378") +
+    geom_line(color="#6F7378") +
+    geom_smooth(method="lm", data=norm_label[growth_label$start_pt:growth_label$end_pt,], linetype=2, color="black") +
+    labs(title=label, x="day", y="ln norm abund") +
+    theme_test() +
+    theme(title = element_text(size=18),
+        axis.title = element_text(size=16),
+        axis.text = element_text(size=14))
+  
+  # Print
+  print(graph)
+  
+  # Save to pdf
+  ggsave(file=paste0("../figures/osc_examples/", label, ".pdf"), graph, device="pdf")
+  }
+
+# Save data as .csv
+write_csv(osc_example_data, "../data_intermediate/oscillation_examples.csv")
+```
+
+# Testing subset for DTW and hierarchical clustering
+
+```{r}
+# Manually selected to represent three major trends I noticed, rise then plateau, rise then decline, oscillating
+test_dtw <- c(404, 817, 815, 797, 760, 746, 749, 600, 202, 581, 792, 750, 664, 757, 764, 693, 404, 575, 492, 325)
+
+growth_dtw <- growth_tidy %>% 
+  add_column(num = 1:nrow(.)) %>% 
+  filter(num %in% test_dtw)
+
+norm_dtw <- norm_prep %>% 
+  semi_join(growth_dtw, by="label") %>% 
+  select(label, Soil, Isotope, Replicate, ASV, Time_point, Day, norm_abund) %>% 
+  arrange(label, Day)
+```
+
+```{r, eval=FALSE}
+# Save testing subset
+saveRDS(norm_dtw, "../data_intermediate/NIFA_norm_dtwtest.rds")
+```
+
+

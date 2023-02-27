@@ -1,0 +1,97 @@
+---
+title: "NIFA2 - int std check"
+author: "Cassandra Wattenburger"
+date: "1/9/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+
+sessionInfo()
+```
+
+# Import data
+
+* Counts
+* Taxonomy
+* Metadata
+
+```{r}
+count <- read_tsv("../data_amplicon/NIFA2/final/NIFA2.counts-final.tsv")
+tax <- read_tsv("../data_amplicon/NIFA2/final/NIFA2.taxonomy-final.tsv")
+meta <- read_tsv("../NIFA_metadata.tsv") %>% 
+  mutate(SampleID = as.character(SampleID))
+```
+
+# Isolate internal standard ASVs
+
+* Aquifex aolicus
+
+```{r}
+aqui_asvs <- filter(tax, Genus == "Aquifex") %>% 
+  select(ASV)
+```
+
+# Calculate count and % int std
+
+```{r}
+# Calculate total internal std count per sample
+aqui_totals <- count %>%
+  filter(ASV %in% aqui_asvs$ASV) %>% 
+  column_to_rownames(var="ASV") %>%
+  colSums()
+
+# Calculate total reads per sample
+sample_totals <- count %>% 
+  column_to_rownames("ASV") %>% 
+  colSums()
+
+# Combine and calculate percent aquifex per sample
+aqui_perc <- bind_rows(sample_totals, aqui_totals) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  select(total=V1, aqui=V2) %>% 
+  mutate(percent = (aqui/total)*100) %>% 
+  rownames_to_column(var="SampleID") %>% 
+  inner_join(meta)
+```
+
+# Visualize
+
+```{r}
+# percent
+aqui_perc %>% 
+  ggplot(aes(x=SampleID, y=percent)) + 
+  geom_point() +
+  geom_hline(yintercept=mean(aqui_perc$percent), linetype=2) +
+  labs(x="sample", y="% internal standard") +
+  theme_test()
+
+# counts
+aqui_perc %>% 
+  ggplot(aes(x=SampleID, y=aqui)) + 
+  geom_point() +
+  geom_hline(yintercept=mean(aqui_perc$aqui, linetype=2)) +
+  labs(x="sample", y="Counts of internal standard") +
+  theme_test()
+```
+
+# Average % int std
+
+```{r}
+aqui_perc %>% 
+  summarize(mean_perc = mean(percent),
+            sd_perc = sd(percent),
+            mean_count = mean(aqui),
+            sd_count = sd(aqui))
+```

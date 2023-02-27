@@ -1,0 +1,170 @@
+---
+title: "NIFA - paprica"
+author: "Cassandra Wattenburger"
+date: "1/13/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+library("trelliscopejs")
+
+sessionInfo()
+```
+
+# Create list of all ASVs
+
+```{r, eval=FALSE}
+# Import processed phyloseq
+physeq <- readRDS("../data_intermediate/NIFA_physeq_rare.rds")
+
+# Grab taxonomy (slow)
+tax <- as.data.frame(tax_table(physeq))
+asvs <- select(tax, ASV)
+write_tsv(asvs, "../paprica_analysis/asvs.txt")
+```
+
+# Import paprica estimates
+
+Produced using paprica v0.6
+
+```{r}
+# PAPRICA outputs
+# Bacteria
+pap_bac <- read_csv("../paprica_analysis/subset_repseqs.bacteria.edge_data.csv")
+place_bac <- read_csv("../paprica_analysis/subset_repseqs.bacteria.combined_16S.bacteria.tax.placements.csv")
+# Archaea
+pap_arc <- read_csv("../paprica_analysis/subset_repseqs.archaea.edge_data.csv")
+place_arc <- read_csv("../paprica_analysis/subset_repseqs.archaea.combined_16S.archaea.tax.placements.csv")
+# Pathways
+path_bac <- read_csv("../paprica_analysis/subset_repseqs.archaea.pathways.csv")
+path_arc <- read_csv("../paprica_analysis/subset_repseqs.bacteria.pathways.csv")
+
+# Growth and death estimates
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+death <- readRDS("../data_intermediate/NIFA_dests_final_ind.rds")
+
+# Taxonomy 
+tax <- read_tsv("../data_amplicon/NIFA2/final/NIFA2.taxonomy-final.tsv")
+```
+
+# PAPRICA results
+
+```{r}
+# What's going on here:
+# The global_edge_num col in the "...placements.csv" file matches to part of the string in the Pquery col in the "...edge_data.csv" file
+# Using these to merge files
+
+# Bacteria
+place_bac <- place_bac %>% mutate(ASV = gsub("[0-9]+\\|(*)+", "\1", Pquery),
+         ASV = gsub("\001", "", ASV))
+
+pap_bac <- pap_bac %>% select(global_edge_num='...1', n16S, genome_size, phi, npaths_actual, nec_actual, confidence, branch_length)
+
+paprica_bac <- full_join(place_bac, pap_bac)
+
+# Archaea
+place_arc <- place_arc %>% mutate(ASV = gsub("[0-9]+\\|(*)+", "\1", Pquery),
+         ASV = gsub("\001", "", ASV))
+
+pap_arc <- pap_arc %>% 
+  select(global_edge_num='...1', n16S, genome_size, phi, npaths_actual, nec_actual, confidence, branch_length)
+
+paprica_arc <- full_join(place_arc, pap_arc)
+
+# Merge
+pap_all <- bind_rows(paprica_bac, paprica_arc) %>% 
+  inner_join(tax) %>% 
+  select(ASV, global_edge_num, n16S, genome_size, phi, npaths_actual, nec_actual, confidence, branch_length, Domain:Species)
+```
+
+### Overall confidence of predictions
+
+```{r}
+mean(pap_all$confidence, na.rm=TRUE)
+sd(pap_all$confidence, na.rm=TRUE)
+```
+
+# Impute missing values
+
+Paprica sometimes misses OTUs due to the sparsity of the databases. 
+Averaging the n16S of the other representatives of the genus or family.
+
+# BOOKMARK
+Need to save result
+
+```{r}
+pap_imp <- data.frame()
+for (a in pap_all$ASV) { # Check each ASV...
+  imp_n16S <- NULL; this_row <- NULL
+  data_sub <- filter(pap_all, ASV==a)
+  if (is.na(data_sub$n16S)) { # if no 16S copy number prediction...
+    genus <- as.character(data_sub$Genus)
+    family <- as.character(data_sub$Family)
+    order <- as.character(data_sub$Order)
+    class <- as.character(data_sub$Class)
+    phylum <- as.character(data_sub$Phylum)
+    data_gen <- filter(pap_all, Genus==genus)
+    data_fam <- filter(pap_all, Family==family)
+    data_order <- filter(pap_all, Order==order)
+    data_class <- filter(pap_all, Class==class)
+    data_phy <- filter(pap_all, Phylum==Phylum)
+    
+    # Impute (average n16S of closest relatives, at least 2 members)
+    if (nrow(na.omit(data_gen)) >= 2) {
+      imp_n16S <- mean(data_gen$n16S, na.rm=TRUE)
+      this_row <- bind_cols(ASV=a, n16S_imp=imp_n16S)
+      pap_imp <- bind_rows(pap_imp, this_row)
+    }
+    else if (nrow(na.omit(data_fam)) >= 2) {
+      imp_n16S <- mean(data_fam$n16S, na.rm=TRUE)
+      this_row <- bind_cols(ASV=a, n16S_imp=imp_n16S)
+      pap_imp <- bind_rows(pap_imp, this_row)
+    }
+    else if (nrow(na.omit(data_order)) >= 2) {
+      imp_n16S <- mean(data_order$n16S, na.rm=TRUE)
+      this_row <- bind_cols(ASV=a, n16S_imp=imp_n16S)
+      pap_imp <- bind_rows(pap_imp, this_row)
+    }
+    else if (nrow(na.omit(data_class)) >= 2) {
+      imp_n16S <- mean(data_class$n16S, na.rm=TRUE)
+      this_row <- bind_cols(ASV=a, n16S_imp=imp_n16S)
+      pap_imp <- bind_rows(pap_imp, this_row)
+    }
+    else if (nrow(na.omit(data_class)) >= 2) {
+      imp_n16S <- mean(data_phy$n16S, na.rm=TRUE)
+      this_row <- bind_cols(ASV=a, n16S_imp=imp_n16S)
+      pap_imp <- bind_rows(pap_imp, this_row)
+    }
+  }
+  else {
+    this_row <- bind_cols(ASV=a, n16S_imp=data_sub$n16S)
+    pap_imp <- bind_rows(pap_imp, this_row)
+  }
+}
+
+# Add to data
+pap_tidy <- pap_all %>% 
+  inner_join(pap_imp) %>% 
+  mutate(n16S = if_else(is.na(n16S), n16S_imp, n16S)) %>% 
+  select(ASV, n16S, genome_size, npaths_actual, nec_actual)
+
+pap_tidy
+```
+
+# Save files
+
+```{r, eval=FALSE}
+saveRDS(pap_tidy, "../data_intermediate/NIFA_paprica_ests.rds")
+```
+
+

@@ -1,0 +1,12 @@
+.git_old/
+data_*/
+paprica_analysis/
+figures/
+.ipynb_checkpoints/
+scripts/archive/
+sripts/rmarkdown_files/
+figures/
+*.tsv
+*.csv
+NIFA.Rproj
+.Rproj.user

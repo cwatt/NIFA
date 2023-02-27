@@ -1,0 +1,379 @@
+---
+title: "DTW testing"
+author: "Cassandra Wattenburger"
+date: "2/16/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+library("dtwclust")
+library("parallel")
+library("doParallel")
+
+sessionInfo()
+```
+
+# Import test data
+
+File generated in NIFA_growth_estimation_ind.Rmd
+
+```{r}
+# Testing data
+test <- readRDS("../data_intermediate/NIFA_norm_dtwtest.rds")
+```
+
+Visualize time series:
+
+```{r}
+# Indvidual
+count <- 0
+for (l in unique(as.character(test$label))) {
+  count <- count + 1
+  
+  # Subset time series
+  norm_label <- filter(test, label==l) %>% 
+  arrange(Day)
+  
+  # Title information
+  title = paste0(count, ". ", l)
+  
+  # Graph
+  graph <- ggplot(norm_label, aes(x=Day, y=norm_abund)) +
+    geom_point(shape=1, size=3, color="#6F7378") +
+    geom_line(color="#6F7378") +
+    labs(title=title, x="day", y="ln norm abund") +
+    theme_test() +
+    theme(title = element_text(size=18),
+        axis.title = element_text(size=16),
+        axis.text = element_text(size=14))
+  
+  # Print
+  print(graph)
+}
+
+# All together
+test %>% 
+  ggplot(aes(x=Day, y=norm_abund, color=label)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~label) +
+  theme_test() +
+  theme(legend.position = "none")
+
+test %>% 
+  ggplot(aes(x=Day, y=norm_abund, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+# Tranformation
+
+We want the shape, not the abundance, to be most important clustering feature, so y-axis transformations are needed.
+
+See: https://perma.cc/ZM9L-NW7J
+
+## Log transform
+
+This is how bacterial growth data is typically visualized and used in analyses. Neutralizes the impact of exponential growth and differing starting values across time series.
+
+```{r}
+# Natural log transform
+test_ln <- test %>% 
+  mutate(abund = norm_abund,
+         abund_ln = log(norm_abund)) %>% 
+  select(label:Day, abund:abund_ln)
+
+# Visualize
+test_ln %>% 
+  ggplot(aes(x=Day, y=abund_ln, color=label)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~label) +
+  theme_test() +
+  theme(legend.position = "none")
+
+test_ln %>% 
+  ggplot(aes(x=Day, y=abund_ln, color=label)) +
+  geom_point() +
+  geom_line() +
+  #facet_wrap(~label) +
+  theme_test() +
+  theme(legend.position = "none")
+
+test_ln %>% 
+  ggplot(aes(x=Day, y=abund_ln, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  facet_wrap(~label) +
+  theme_test() +
+  theme(legend.position = "none")
+
+test_ln %>% 
+  ggplot(aes(x=Day, y=abund_ln, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+## Offset translation
+
+Function: x-mean(x)
+
+Reduce effect of different starting abundances.
+
+```{r}
+# Mean of each time series
+ts_mean <- test_ln %>% 
+  group_by(label) %>% 
+  summarize(ts_mean = mean(abund_ln)) %>% 
+  ungroup()
+
+# Offset by mean
+test_offset <- test_ln %>% 
+  left_join(ts_mean, by="label") %>% 
+  mutate(abund_offset = abund_ln - ts_mean) %>% 
+  ungroup() %>% 
+  select(label:abund_ln, abund_offset)
+  
+# Visualize
+test_offset %>% 
+  ggplot(aes(y=abund_offset, x=Day, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+## Normalize
+
+https://machinelearningmastery.com/normalize-standardize-time-series-data-python/
+
+Function: y = (x - min) / (max - min)
+
+This should help keep the timeseries all in the same "realm", between 0 and 1. Minimizes the impact of abundance change in time series comparisons.
+
+```{r}
+# Mins and maxes of each time series
+ts_minmax <- test_offset %>% 
+  group_by(label) %>% 
+  summarize(ts_min = min(abund_offset),
+            ts_max = max(abund_offset))
+
+# Normalize
+# y = (x - min) / (max - min)
+test_norm <- test_offset %>% 
+  left_join(ts_minmax, by="label") %>%
+  mutate(abund_norm = (abund_offset - ts_min)/(ts_max - ts_min))
+
+# Visualize
+test_norm %>% 
+  ggplot(aes(x=Day, y=abund_norm, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  facet_wrap(~label) +
+  theme_test() +
+  theme(legend.position = "none")
+
+test_norm %>% 
+  ggplot(aes(y=abund_norm, x=Day, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+## Side-by-side Comparison
+
+```{r}
+test_ln %>% 
+  ggplot(aes(x=Day, y=abund_ln, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  theme_test() +
+  theme(legend.position = "none")
+
+test_offset %>% 
+  ggplot(aes(y=abund_offset, x=Day, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  theme_test() +
+  theme(legend.position = "none")
+
+test_norm %>% 
+  ggplot(aes(y=abund_norm, x=Day, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+## Tidy up and reformat time series
+
+```{r}
+# Give each unique time series a number
+series_nums <- data.frame("label"=unique(as.character(test_norm$label)),
+                          "series"=1:length(unique(as.character(test_norm$label))))
+
+# Wide and long format
+test_long <- test_norm %>% 
+  left_join(series_nums, by="label") %>%
+  select(series, label, Day, abund_norm)
+
+test_wide <- test_long %>% 
+  pivot_wider(names_from=Day, values_from=abund_norm)
+```
+
+# Dynamic time warping
+
+Trying a few different options to see impact on clustering.
+
+Set multi-threading:
+
+```{r, eval=FALSE}
+# Set up multithreading with half the server's processors (48 of 96)
+## Restart R to change number of threads
+# workers <- makeCluster(48)
+# registerDoParallel(workers)
+```
+
+Starter test:
+
+```{r, eval=FALSE}
+set.seed(4)
+
+# First few time series as a test
+s1 <- na.omit(as.numeric(test_wide[1,3:ncol(test_wide)]))
+s2 <- na.omit(as.numeric(test_wide[2,3:ncol(test_wide)]))
+s3 <- na.omit(as.numeric(test_wide[3,3:ncol(test_wide)]))
+s4 <- na.omit(as.numeric(test_wide[4,3:ncol(test_wide)]))
+
+# DTW defaults
+dtw12 <- dtw_basic(s1, s2, backtrack=T)
+dtw13 <- dtw_basic(s1, s3, backtrack=T)
+dtw14 <- dtw_basic(s1, s4, backtrack=T)
+
+# Visualize
+labs_test <- unique(as.character(test_norm$label))[1:4]
+
+test_norm %>% 
+  filter(label %in% labs_test) %>%
+  mutate(series = case_when(label=="Ag2_1b486d499bd566354698051626670a55" ~ "s1", # relabel
+                            label=="Ag2_7aac64e1f8228950cb15cffd36389e33" ~ "s2",
+                            label=="Ag3_060be584b96d1f97937ec0e5d458116a" ~ "s3",
+                            label=="Ag3_5bc4e3c8704293903a426771690d2f87" ~ "s4"),
+         dtw_dist = case_when(series=="s1" ~ 0, # add distance to s1
+                              series=="s2" ~ dtw12$distance,
+                              series=="s3" ~ dtw13$distance,
+                              series=="s4" ~ dtw14$distance)) %>% 
+  ggplot(aes(x=Day, y=abund_norm, color=series, size=-dtw_dist)) +
+  geom_point() +
+  geom_line() +
+  #geom_smooth(method="loess", se=F) +
+  theme_test()
+
+test_long %>% 
+  filter(label %in% labs_test) %>%
+  mutate(series = case_when(label=="Ag2_1b486d499bd566354698051626670a55" ~ "s1", # relabel
+                            label=="Ag2_7aac64e1f8228950cb15cffd36389e33" ~ "s2",
+                            label=="Ag3_060be584b96d1f97937ec0e5d458116a" ~ "s3",
+                            label=="Ag3_5bc4e3c8704293903a426771690d2f87" ~ "s4"),
+         dtw_dist = case_when(series=="s1" ~ 0, # add distance to s1
+                              series=="s2" ~ dtw12$distance,
+                              series=="s3" ~ dtw13$distance,
+                              series=="s4" ~ dtw14$distance)) %>% 
+  ggplot(aes(x=Day, y=abund_norm, color=series, size=-dtw_dist)) +
+  # geom_point() +
+  # geom_line() +
+  geom_smooth(method="loess", se=F) +
+  theme_test()
+```
+
+## All pair-wise comparisons
+
+Defaults for now
+
+```{r, warning=FALSE}
+dtw_df <- data.frame()
+
+for (s1 in as.numeric(test_wide$series)) { 
+  this_row <- NULL
+  data_s1 <- na.omit(as.numeric(test_wide[s1,3:ncol(test_wide)]))
+  for (s2 in 1:nrow(test_wide)) {
+    data_s2 <- na.omit(as.numeric(test_wide[s2,3:ncol(test_wide)]))
+    dtw_temp <- dtw_basic(data_s1, data_s2) # calculate DTW
+    this_row <- bind_cols(this_row, dtw_temp)
+  }
+  dtw_df <- bind_rows(dtw_df, this_row)
+}
+```
+
+Visualize comparisons to s1:
+
+```{r}
+# Compared to s1
+dist_s1 <- data.frame(dtw_df[1,]) %>% 
+  pivot_longer(everything()) %>% 
+  mutate(series = row_number()) %>% 
+  select(series, dtw_dist=value)
+
+test_long %>% 
+  left_join(dist_s1, by="series") %>% 
+  mutate(series = as.character(series)) %>% 
+  ggplot(aes(x=Day, y=abund_norm, color=series, size=-dtw_dist)) +
+  geom_point() +
+  geom_line() +
+  #geom_smooth(method="loess", se=F) +
+  facet_wrap(~series) +
+  theme_test()
+
+test_long %>% 
+  left_join(dist_s1, by="series") %>% 
+  mutate(series = as.character(series)) %>% 
+  ggplot(aes(x=Day, y=abund_norm, color=series, size=-dtw_dist)) +
+  #geom_point() +
+  #geom_line() +
+  geom_smooth(method="loess", se=F) +
+  facet_wrap(~series) +
+  theme_test()
+```
+
+Visualize comparisons to series 13:
+
+```{r}
+# Compared to s13
+dist_s13 <- data.frame(dtw_df[13,]) %>% 
+  pivot_longer(everything()) %>% 
+  mutate(series = row_number()) %>% 
+  select(series, dtw_dist=value)
+
+test_long %>% 
+  left_join(dist_s13, by="series") %>% 
+  mutate(series = as.character(series)) %>% 
+  ggplot(aes(x=Day, y=abund_norm, color=series, size=-dtw_dist)) +
+  geom_point() +
+  geom_line() +
+  #geom_smooth(method="loess", se=F) +
+  facet_wrap(~series) +
+  theme_test()
+
+test_long %>% 
+  left_join(dist_s13, by="series") %>% 
+  mutate(series = as.character(series)) %>% 
+  ggplot(aes(x=Day, y=abund_norm, color=series, size=-dtw_dist)) +
+  #geom_point() +
+  #geom_line() +
+  geom_smooth(method="loess", se=F) +
+  facet_wrap(~series) +
+  theme_test()
+```
+
+# Clustering
+
+```{r}
+
+```
+
