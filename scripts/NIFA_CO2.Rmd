@@ -188,7 +188,7 @@ std_df %>%
 There is definitely drift, appears that slope is decreasing? Highest std is most variable. Can it be removed?
 
 
-# Check highest sample area vs std 5
+Check highest sample area vs std 5
 
 ```{r}
 sample_df <- co2_prepped %>% 
@@ -202,25 +202,66 @@ std_sample %>%
   mutate(foo = if_else(type=="standard", Sample, "sample")) %>% 
   ggplot(aes(x=Date, y=C1213, shape=type, color=foo)) +
   geom_point() +
-  theme_test()
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45))
 ```
 
 Highest sample areas are lower than std 5 for each tp and std 6 driftiing more than others.
 
-Remove std 6:
+Date 05/29/23 has strangely compressed lower stds, going to remove and impute based on average of neighbors.
+
+### Impute stds 0-3 for 05/29/23
+
+Average of std Area of neighboring TPs.
 
 ```{r}
-std_df <- std_df %>% 
+imp_vals <- std_df %>% 
+  filter(Date %in% c("052822", "053122") & Sample %in% c("std0", "std1", "std2", "std3")) %>% 
+  group_by(Sample) %>% 
+  summarize(C1213_imp = mean(C1213)) 
+
+imp <- std_df %>% 
+  filter(Date=="052922" & Sample %in% c("std0", "std1", "std2", "std3")) %>% 
+  inner_join(imp_vals) %>% 
+  select(Sample:C13, C1213=C1213_imp, ppm)
+
+std_imp <- std_df %>% 
+  filter(!(Date == "052922" & Sample %in% c("std0", "std1", "std2", "std3"))) %>% 
+  bind_rows(imp)
+```
+
+Visualize w/imputed values:
+
+```{r}
+# Plot with imputed values:
+stdimp_sample <- std_imp %>% 
+  bind_rows(sample_df)
+
+stdimp_sample %>% 
+  filter(type %in% c("sample", "standard")) %>% 
+  mutate(foo = if_else(type=="standard", Sample, "sample")) %>% 
+  ggplot(aes(x=Date, y=C1213, shape=type, color=foo)) +
+  geom_point() +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45))
+```
+
+## Remove std 6
+
+Much higher than any of the samples and more prone to drift.
+
+```{r}
+std_imp <- std_imp %>% 
   filter(Sample != "std6")
 
-std_df %>%
+std_imp %>%
   ggplot(aes(x=ppm, y=C1213)) +
   geom_point() +
   geom_smooth(method="lm") +
   facet_wrap(~Date) +
   theme_test()
 
-std_df %>%
+std_imp %>%
   ggplot(aes(x=ppm, y=C1213)) +
   geom_point() +
   geom_smooth(aes(group=Date, color=Date), se=F, method="lm") +
@@ -232,8 +273,8 @@ std_df %>%
 ```{r}
 # Linear regressions for each TP
 std_cals <- tibble()
-for (d in unique(std_df$Day)) {
-  dat <- filter(std_df, Day==d) # isolate TP stds
+for (d in unique(std_imp$Day)) {
+  dat <- filter(std_imp, Day==d) # isolate TP stds
   std_lm <- lm(C1213 ~ ppm, dat)
   this_row <- bind_cols(Day = unique(dat$Day), # save results
                        intercept = summary(std_lm)$coefficients[1,1],
@@ -302,7 +343,8 @@ sample_ppm %>%
   geom_point() +
   geom_boxplot() +
   facet_wrap(~Litter) +
-  theme_test()
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45))
 
 # 13CO2
 sample_ppm %>% 
@@ -311,8 +353,10 @@ sample_ppm %>%
   geom_point(alpha=0.5) +
   #geom_boxplot() +
   facet_wrap(~Soil, nrow=2) +
-  geom_vline(xintercept=13) +
+  geom_vline(xintercept=12, linetype=2) +
+  geom_vline(xintercept=13, linetype=2) +
   geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
+  labs(title="13C Litter, 13CO2") +
   theme_test() +
   theme(axis.text.x = element_text(angle=45))
 
@@ -323,31 +367,37 @@ sample_ppm %>%
   geom_point(alpha=0.5) +
   #geom_boxplot() +
   facet_wrap(~Soil, nrow=2) +
-  geom_vline(xintercept=13) +
+  geom_vline(xintercept=12, linetype=2) +
+  geom_vline(xintercept=13, linetype=2) +
   geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
+  labs(title="13C Litter, 12CO2") +
   theme_test() +
   theme(axis.text.x = element_text(angle=45))
 
 # No litter
 sample_ppm %>% 
   filter(Litter=="none") %>% 
-  ggplot(aes(x=Day, y=ppm_12C)) +
+  ggplot(aes(x=Date, y=ppm_12C)) +
   geom_point(alpha=0.5) +
-  #geom_boxplot() +
+  geom_vline(xintercept=12, linetype=2) +
+  geom_vline(xintercept=13, linetype=2) +
   facet_wrap(~Soil, nrow=2) +
-  geom_vline(xintercept=13) +
   geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
+  labs(title="No litter") +
   theme_test()
 ```
+
+Sample 190 likely experienced some issue with sampling. 
+
 
 Notes:
 * I think sample 186 on 5/31 is a failure because both 13C and 12C are 0
 * Why is 13C so low on 5/29? 12C isn't?? If leakage issue both would be low???
 * more like a below detection threshold issue due to slope and intercept of stds?
 
-Calculate mg C:
+# WIP BELOW
 
-# BOOKMARK
+Calculate mg C:
 
 # need estimate on headspace of serum bottles with soil
 
