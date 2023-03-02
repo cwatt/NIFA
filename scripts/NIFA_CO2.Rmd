@@ -25,6 +25,8 @@ Note: Files exported from Shimadzu PostRun Analysis software as ASCII. In GCMS P
 
 This script is built to run on data that has been stored in a project directory containing a "data" directory with sub-directories for each time point that .txt files with the GCMS output for each sample.
 
+Why is this so slow???
+
 ```{r}
 # List of directories containing data files
 dir <- list.dirs(path="../data_gcms/data", full.names=TRUE, recursive=FALSE)
@@ -37,7 +39,7 @@ for (i in dir) {
 
 # Extract data
 # TIC, w/z44 (12C), w/z45 (13C)
-co2_df <- data.frame()
+area_df <- data.frame()
 
 for (i in names(files)) { # for each list of files (refers to a directory)
   for (x in files[[i]]) { # for each file in the selected list (directory)
@@ -58,31 +60,30 @@ for (i in names(files)) { # for each list of files (refers to a directory)
     dat <- read_tsv(x, skip=7, col_names=TRUE) %>%
       select("Measurement" = Name, Area) %>% # keep only the name of sample and the area measurements collected
       drop_na() %>%
-      mutate(Measurement = case_when(Measurement == "TIC" ~ "Ctotal", # more explicit measurement labels
-                              Measurement == "m/z 44" ~ "C12",
-                              Measurement == "m/z 45" ~ "C13"),
+      mutate(Measurement = case_when(Measurement == "TIC" ~ "TIC",
+                              Measurement == "m/z 44" ~ "mz44",
+                              Measurement == "m/z 45" ~ "mz45"),
              TP = tp, # adding additional metadata...
              Date = date,
              Sample = name)
-    co2_df <- rbind(co2_df, dat) # add to data frame
+    area_df <- rbind(area_df, dat) # add to data frame
   }
 }
 ```
 
-# Reformat data
+# Reformat
 
 ```{r}
 # Reformat
-co2_raw <- co2_df %>%
+area_raw <- area_df %>%
   filter(Sample != "foo") %>%
   mutate(TP = as.numeric(TP),
-         type = if_else(grepl("std[0-9]+", Sample), "standard",
-                        if_else(grepl("amb", Sample), "ambient",
-                                if_else(Sample %in% as.character(191:196), "control", "sample"))))
+         Type = if_else(grepl("std[0-9]+", Sample), "standard",
+                        if_else(grepl("amb", Sample), "ambient", "sample")))
 
 # Microcosm number metadata
-ucosm_nums <- select(co2_raw, Sample, type) %>% 
-  filter(type != "standard" | type != "ambient") %>% 
+ucosm_nums <- select(area_raw, Sample, Type) %>% 
+  filter(Type != "standard" | Type != "ambient") %>% 
   mutate(Microcosm = as.numeric(Sample)) %>% 
   select(Sample, Microcosm) %>% 
   unique()
@@ -96,62 +97,168 @@ tp_days <- meta %>%
   filter(!is.na(TP))
 
 soil_litter <- meta %>% 
-  mutate(Litter = if_else(Isotope != "None", "litter", "none")) %>% 
+  mutate(Litter = if_else(Isotope != "None", "litter", "no litter")) %>% 
   select(Microcosm, Soil, Litter) %>% 
   filter(Soil!="Negative")
   
-
-co2_raw <- co2_raw %>% 
+area_raw <- area_raw %>% 
   left_join(tp_days) %>% 
   left_join(ucosm_nums) %>% 
   left_join(soil_litter) %>% 
-  select(Sample, Microcosm, type, Soil, Litter, TP, Date, Day, Measurement, Area)
+  select(Sample, Microcosm, Type, Soil, Litter, TP, Date, Day, Measurement, Area)
 
-co2_raw 
+area_raw 
 ```
 
 Look at raw data:
 
 ```{r}
-co2_raw %>% 
-  filter(type=="sample") %>% 
-  ggplot(aes(x=Day, y=Area, color=Measurement)) +
-  geom_point() + 
-  facet_wrap(~Measurement) +
-  theme_test()
+# all
+area_raw %>% 
+  ggplot(aes(x=Date, y=Area, color=Litter)) +
+  geom_point(alpha=0.5) +
+  facet_wrap(~Type, nrow=2) +
+  geom_vline(xintercept=12, linetype=2) +
+  geom_vline(xintercept=13, linetype=2) +
+  #geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45))
 
-co2_raw %>% 
-  filter(type=="sample") %>% 
-  ggplot(aes(x=Day, y=Area, color=Measurement)) +
-  geom_point() + 
-  theme_test()
+# Standards
+area_raw %>% 
+  filter(Type=="standard" & Measurement=="mz44") %>% 
+  ggplot(aes(x=Date, y=Area)) +
+  geom_point(alpha=0.5) +
+  #geom_text(aes(label=Sample), vjust="inward", hjust="inward", color="black") +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45))
 
-co2_raw %>% 
-  filter(type=="sample" & Measurement=="C13") %>% 
-  ggplot(aes(x=Day, y=Area, color=Sample)) +
-  geom_point() + 
-  theme_test()
+# Samples
+area_raw %>% 
+  filter(Type=="sample") %>% 
+  ggplot(aes(x=Date, y=Area, color=Measurement)) +
+  geom_point(alpha=0.5) +
+  facet_wrap(Litter~Measurement) +
+  #geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45, hjust=1, size=6))
 ```
 
-# Calculate total area
+Notes:
 
-TIC area often does not record (not sure why), so we will use 12C + 13C instead which is a close approximation.
+* Stds 0-4 on day 05/29/22 are off, need to fix
+* Std 4 on 06/12/22 is off
+* Muc of TIC data missing, GCMS has issue detecting or calculating
+* Several drop outs of mz45 data in microcosm samples, GCMS detection issue?
+* One drop out of mz44 data in microcosm samples
+* One abnormally heightened mz45 for no-litter sample, sample mix up?
+* Missing most of sample data for 05/26/22 due to auto-injector failure
+
+# Preprocess
+
+Addressing abnomralities in data noted above.
+
+Remove TIC area:
+
+Unreliably measured.
 
 ```{r}
-# Calculate
-co2_prepped <- co2_raw %>%
-  filter(Measurement != "Ctotal") %>%
-  pivot_wider(names_from = Measurement, values_from = Area) %>%
-  mutate(C1213 = C12+C13)
+area_notic <- area_raw %>% 
+  filter(Measurement != "TIC")
+```
+
+Standards:
+
+Impute averages from same standards in neighboring time points.
+
+```{r}
+# Calculate imputation
+imp_stds <- area_notic %>% 
+  filter((Date %in% c("052822", "053122") & Sample %in% c("std0", "std1", "std2", "std3", "std4") & Measurement=="mz44") |
+          (Date %in% c("061022", "061422") & Sample=="std4" & Measurement=="mz44")) %>% # neighboring stds
+  mutate(group = if_else(Date %in% c("052822", "053122"), "052922", "061222")) %>% 
+  group_by(Sample, group) %>% 
+  summarize(Area_imp=mean(Area)) %>% 
+  ungroup() %>% 
+  add_column(Measurement="mz44") %>% 
+  rename(Date=group)
+
+# Impute into dataframe
+area_stdimp <- area_notic %>% 
+  full_join(imp_stds)
+
+area_stdimp <- area_stdimp %>% 
+  mutate(Area = if_else(is.na(Area_imp), Area, Area_imp)) %>% 
+  select(Sample:Area)
+
+# Visualize
+area_stdimp %>% 
+  filter(Type=="standard" & Measurement=="mz44") %>% 
+  ggplot(aes(x=Date, y=Area)) +
+  geom_point(alpha=0.5) +
+  #geom_text(aes(label=Sample), vjust="inward", hjust="inward", color="black") +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45))
+```
+
+Samples:
+
+Remove non-detects
+* Meadow 190 mz45 on 05/23/22 (13C detection issue?)
+* Ag 185 mz45 on 06/12/22 (13C detection issue?)
+* Ag 186 mz44 & mz45 on 05/31/22 (headspace lost?)
+
+```{r}
+# Add unique labels for easierness
+area_labs <- area_stdimp %>% 
+  mutate(label = paste0(Sample, Soil, Measurement, Litter, Date))
+
+drop_labs <- c("190Meadowmz45litter052322", "185Agmz45litter061222", "186Agmz44litter053122", "186Agmz45litter053122")
+
+area_drop <- filter(area_labs, !(label %in% drop_labs))
+```
+
+Impute lost samples on 05/26/22 via neighbor averaging
+* Most samples on 05/26/22 (GCMS auto-injector failed and headspace lost)
+
+```{r}
+# Samples that were measured
+area_drop %>% 
+  filter(Date=="052622" & Type=="sample") %>%
+  select(Sample) %>% 
+  unique() %>% 
+  as.list()
+
+sams_lost <- c(187:190, 192, 193, 195)
+
+# Calculate imputations
+imp_sams <- area_drop %>% 
+  filter(Microcosm %in% sams_lost & (Date=="052522" | Date=="052722")) %>% 
+  group_by(Sample, Measurement) %>% 
+  summarize(Area_imp = mean(Area)) %>% 
+  ungroup() %>% 
+  mutate(Microcosm = as.numeric(Sample),
+         Litter = if_else(Microcosm %in% 185:190, "litter", "no litter"),
+         Soil = if_else(Microcosm %in% c(185:186, 191:193), "Ag", "Meadow")) %>% 
+  add_column(Date="052622", TP=16, Type="sample")
+
+# Impute into dataframe
+area_samimp <- area_drop %>% 
+  full_join(imp_sams) %>% 
+  mutate(Area = if_else(is.na(Area_imp), Area, Area_imp)) %>% 
+  select(label, Sample:Area)
+
+area_prep <- area_samimp
 ```
 
 # Standards
 
-Separate from samples/atmosphere measurements
+Isolate:
 
 ```{r}
-std_df <- co2_prepped %>%
-  filter(type=="standard")
+std_df <- area_prep %>%
+  filter(Type=="standard") %>%
+  select(label, everything())
 ```
 
 Add ppm:
@@ -166,116 +273,71 @@ std_df <- std_df %>%
                          Sample == "std4" ~ 7692,
                          Sample == "std5" ~ 15385,
                          Sample == "std6" ~ 30769)) 
+std_df
 ```
 
 Visualize:
 
 ```{r}
-std_df %>%
-  ggplot(aes(x=ppm, y=C1213)) +
+# mz44
+std_df %>% 
+  filter(Measurement=="mz44") %>% 
+  ggplot(aes(x=Date, y=Area, color=Sample)) +
   geom_point() +
-  geom_smooth(method="lm") +
-  facet_wrap(~Date) +
-  theme_test()
+  geom_smooth(method="lm", linetype=2) +
+  labs(title="mz44") +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
 
-std_df %>%
-  ggplot(aes(x=ppm, y=C1213)) +
+# mz45
+std_df %>% 
+  filter(Measurement=="mz45") %>% 
+  ggplot(aes(x=Date, y=Area, color=Sample)) +
   geom_point() +
-  geom_smooth(aes(group=Date, color=Date), se=F, method="lm") +
-  theme_test()
+  geom_smooth(method="lm", linetype=2) +
+  labs(title="mz45") +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
 ```
 
-There is definitely drift, appears that slope is decreasing? Highest std is most variable. Can it be removed?
+Downward drift with time, but most pronounced in highest stds. Can they be removed?
 
-Check highest sample area vs std 5
+The mz45 data is too variable at low end to be used for calibration, only mz44 will be used.
+
+Check highest sample area vs std 5:
 
 ```{r}
-sample_df <- co2_prepped %>% 
-  filter(type=="sample" | type=="control")
+sample_df <- area_prep %>% 
+  filter(Type=="sample")
 
 std_sample <- std_df %>% 
   bind_rows(sample_df)
 
 std_sample %>% 
-  filter(type %in% c("sample", "standard")) %>% 
-  mutate(foo = if_else(type=="standard", Sample, "sample")) %>% 
-  ggplot(aes(x=Date, y=C1213, shape=type, color=foo)) +
+  filter(Measurement=="mz44") %>% 
+  ggplot(aes(x=Date, y=Area, color=Type)) +
   geom_point() +
   theme_test() +
-  theme(axis.text.x = element_text(angle=45))
+  theme(axis.text.x = element_text(angle=45, hjust=1))
 ```
 
-Highest sample areas are lower than std 5 for each tp and std 6 drifting much more than others.
+Highest sample areas are lower than std 5.
 
-Date 05/29/23 has strangely compressed lower stds, going to remove and impute based on average of neighbors.
-
-### Impute stds 0-3 for 05/29/23
-
-Average of std Area of neighboring TPs.
+Remove std 6:
 
 ```{r}
-imp_vals <- std_df %>% 
-  filter(Date %in% c("052822", "053122") & Sample %in% c("std0", "std1", "std2", "std3")) %>% 
-  group_by(Sample) %>% 
-  summarize(C1213_imp = mean(C1213)) 
-
-imp <- std_df %>% 
-  filter(Date=="052922" & Sample %in% c("std0", "std1", "std2", "std3")) %>% 
-  inner_join(imp_vals) %>% 
-  select(Sample:C13, C1213=C1213_imp, ppm)
-
-std_imp <- std_df %>% 
-  filter(!(Date == "052922" & Sample %in% c("std0", "std1", "std2", "std3"))) %>% 
-  bind_rows(imp)
-```
-
-Visualize w/imputed values:
-
-```{r}
-# Plot with imputed values:
-stdimp_sample <- std_imp %>% 
-  bind_rows(sample_df)
-
-stdimp_sample %>% 
-  filter(type %in% c("sample", "standard")) %>% 
-  mutate(foo = if_else(type=="standard", Sample, "sample")) %>% 
-  ggplot(aes(x=Date, y=C1213, shape=type, color=foo)) +
-  geom_point() +
-  theme_test() +
-  theme(axis.text.x = element_text(angle=45))
-```
-
-## Remove std 6
-
-Much higher than any of the samples and more prone to drift.
-
-```{r}
-std_imp <- std_imp %>% 
+std_df <- std_df %>% 
   filter(Sample != "std6")
-
-std_imp %>%
-  ggplot(aes(x=ppm, y=C1213)) +
-  geom_point() +
-  geom_smooth(method="lm") +
-  facet_wrap(~Date) +
-  theme_test()
-
-std_imp %>%
-  ggplot(aes(x=ppm, y=C1213)) +
-  geom_point() +
-  geom_smooth(aes(group=Date, color=Date), se=F, method="lm") +
-  theme_test()
 ```
 
 ### Calibration curve
 
 ```{r}
-# Linear regressions for each TP
 std_cals <- tibble()
-for (d in unique(std_imp$Day)) {
-  dat <- filter(std_imp, Day==d) # isolate TP stds
-  std_lm <- lm(C1213 ~ ppm, dat)
-  this_row <- bind_cols(Day = unique(dat$Day), # save results
+for (d in unique(std_df$Date)) {
+  dat <- filter(std_df, Date==d, Measurement=="mz44")
+  std_lm <- lm(Area ~ ppm, dat)
+  this_row <- bind_cols(Date = unique(dat$Date), 
                        intercept = summary(std_lm)$coefficients[1,1],
                        slope = summary(std_lm)$coefficients[2,1], 
                        adjR2 = summary(std_lm)$adj.r.squared, 
@@ -286,29 +348,33 @@ for (d in unique(std_imp$Day)) {
 std_cals
 ```
 
-# Ambient samples
+All look good.
+
+# Ambients
 
 Isolate ambient samples:
 
 ```{r}
-amb_df <- co2_prepped %>% 
-  filter(type=="ambient") %>% 
+amb_df <- area_prep %>% 
+  filter(Type=="ambient") %>% 
   mutate(ppm = 0) # dummy variable for graphing
 ```
 
 Visualize:
 
 ```{r}
-# against standards
+# Against standards
 bind_rows(std_df, amb_df) %>%
-  ggplot(aes(x=ppm, y=C1213, color=type)) +
+  filter(Measurement == "mz44") %>% 
+  ggplot(aes(x=ppm, y=Area, color=Type)) +
   geom_point() +
   facet_wrap(~Day) +
   theme_test()
 
 # alone
 amb_df %>% 
-  ggplot(aes(x=Day, y=C1213)) +
+  filter(Measurement=="mz44") %>% 
+  ggplot(aes(x=Day, y=Area)) +
   geom_point() +
   geom_smooth(method="lm") +
   geom_line(aes(group=Date)) +
@@ -323,158 +389,24 @@ Convert sample areas into ppm:
 
 ```{r}
 sample_ppm <- sample_df %>% 
-  left_join(std_cals, by="Day") %>%
+  left_join(std_cals, by="Date") %>%
   select(everything(), -adjR2, -pval) %>% 
-  mutate(ppm_total = (C1213 - intercept)/slope, # convert to ppm and correct values before detection threshold
-         ppm_total = if_else(ppm_total < 0, 0, ppm_total),
-         ppm_12C = (C12 - intercept)/slope,
-         ppm_12C = if_else(ppm_12C < 0, 0, ppm_12C),
-         ppm_13C = (C13 - intercept)/slope,
-         ppm_13C = if_else(ppm_13C < 0, 0, ppm_13C))
+  mutate(ppm = (Area - intercept)/slope, # convert area to ppm based on curves
+         ppm = if_else(ppm < 0, 0, ppm)) # Replace negative values with 0s
 ```
 
 Visualize:
 
 ```{r}
-# Total CO2
 sample_ppm %>% 
-  ggplot(aes(x=Date, y=ppm_total, color=Soil)) +
+  filter(Type=="sample") %>% 
+  ggplot(aes(x=Day, y=ppm, color=Measurement)) +
   geom_point() +
-  geom_boxplot() +
-  facet_wrap(~Litter) +
-  theme_test() +
-  theme(axis.text.x = element_text(angle=45))
-
-# 13CO2
-sample_ppm %>% 
-  filter(Litter=="litter") %>% 
-  ggplot(aes(x=Date, y=ppm_13C)) +
-  geom_point(alpha=0.5) +
-  #geom_boxplot() +
-  facet_wrap(~Soil, nrow=2) +
-  geom_vline(xintercept=12, linetype=2) +
-  geom_vline(xintercept=13, linetype=2) +
-  geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
-  labs(title="13C Litter, 13CO2") +
-  theme_test() +
-  theme(axis.text.x = element_text(angle=45))
-
-# 12CO2
-sample_ppm %>% 
-  filter(Litter=="litter") %>% 
-  ggplot(aes(x=Date, y=ppm_12C)) +
-  geom_point(alpha=0.5) +
-  #geom_boxplot() +
-  facet_wrap(~Soil, nrow=2) +
-  geom_vline(xintercept=12, linetype=2) +
-  geom_vline(xintercept=13, linetype=2) +
-  geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
-  labs(title="13C Litter, 12CO2") +
-  theme_test() +
-  theme(axis.text.x = element_text(angle=45))
-
-# No litter
-sample_ppm %>% 
-  filter(Litter=="none") %>% 
-  ggplot(aes(x=Date, y=ppm_12C)) +
-  geom_point(alpha=0.5) +
-  geom_vline(xintercept=12, linetype=2) +
-  geom_vline(xintercept=13, linetype=2) +
-  facet_wrap(~Soil, nrow=2) +
-  geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
-  labs(title="No litter") +
-  theme_test() +
-  theme(axis.text.x = element_text(angle=45))
-
-# No litter
-sample_ppm %>% 
-  filter(Litter=="none") %>% 
-  ggplot(aes(x=Date, y=ppm_13C)) +
-  geom_point(alpha=0.5) +
-  geom_vline(xintercept=12, linetype=2) +
-  geom_vline(xintercept=13, linetype=2) +
-  facet_wrap(~Soil, nrow=2) +
-  geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
-  labs(title="No litter") +
-  theme_test() +
-  theme(axis.text.x = element_text(angle=45))
+  facet_wrap(Litter~Soil) +
+  theme_test()
 ```
 
-Sample 190, 185, 186 13C have data drop outs, must be issue with headspace sampling or GCMS?
-
-Missing data on Day 05/26/22, according to lab notebook this is the first time the auto-injector on the GCMS first failed, samples were lost.
-
-It looks like no litter Meadow 13C sample on 06/10/22 was maybe mixed up with a litter-added sample, noted.
-
-Notes:
-* I think Ag 186 on 5/31/22 is a headspace sampling failure because both 13C and 12C are 0
-* Sample Meadow 190 on 5/23/22 and Ag 185 on 6/12/22 likely GCMS error of some sort because 13CO2 measurement very low with expected 12CO2 values
-
-## Impute dropped data
-
-Drop outs:
-* Most samples on 05/26/22 (GCMS auto-injector failed and headspace lost)
-* Meadow 190 13C on 05/23/22 (13C detection issue?)
-* Ag 185 13C on 06/12/22 (13C detection issue?)
-* Ag 186 13C and 12C on 05/31/22 (headspace lost)
-
-Calculate averages of nearest neighbors:
-
-# BOOKMARK
-```{r}
-# Add labels
-sample_ppm <- sample_ppm %>% 
-  select(Sample:Day, )
-  pivot_longer(-Sample:Day, )
-  
-  
-sample_ppm <- sample_ppm %>% 
-  mutate(label = paste0(label = paste0(Microcosm, Soil, Litter, Date)))
-
-drop_labs <- c("190Meadowlitterlabelled052322", "185Aglitterlabelled06122", 
-               "186Aglitterlabelled053122", "186Aglitterunlabelled053122",
-               "187Meadowlitterlabelled052622", "187Meadowlitterunlabelled052622",
-               "188Meadowlitterlabelled052622", "188Meadowlitterunlabelled052622",
-               "189Meadowlitterlabelled052622", "189Meadowlitterunlabelled052622",
-               "190Meadowlitterlabelled052622", "190Meadowlitterunlabelled052622")
-
-# CO2
-imp_m13C02190 <- sample_mg %>% 
-  filter((Microcosm==190 & isotope=="labelled" & molecule=="CO2" & Soil=="Meadow") & (Date=="052222" | Date=="052422")) %>%
-  summarize(mean(mg)) %>% 
-  as.numeric()
-
-imp_ag13C02185 <- sample_mg %>% 
-  filter((Microcosm==185 & isotope=="labelled" & molecule=="CO2" & Soil=="Ag") & (Date=="061022" | Date=="061422")) %>%
-  summarize(mean(mg)) %>% 
-  as.numeric()
-
-imp_ag13C02186 <- sample_mg %>% 
-  filter((Microcosm==186 & isotope=="labelled" & molecule=="CO2" & Soil=="Ag") & (Date=="052922" | Date=="060222")) %>%
-  summarize(mean(mg)) %>% 
-  as.numeric()
-
-imp_ag12C02186 <- sample_mg %>% 
-  filter((Microcosm==186 & isotope=="unlabelled" & molecule=="CO2" & Soil=="Ag") & (Date=="052922" | Date=="060222")) %>%
-  summarize(mean(mg)) %>% 
-  as.numeric()
-```
-
-Replace:
-
-```{r}
-drop_labs <- 
-
-sample_imp <- sample_mg %>% 
-  mutate(label = paste0(Microcosm, Soil, Litter, isotope, molecule))
-```
-
-
-
-
-
-
-Calculate mg C:
+Calculate mg CO2/C:
 
 ```{r}
 # Ideal gas law: n=(P*V)/(R*temp)
@@ -494,140 +426,47 @@ mol_m100 <- P*V_m/(R*temp)
 mg_ag100 <- mol_ag100*mwCO2*1000
 mg_m100 <- mol_m100*mwCO2*1000
 
-# Convert to mass based on ppm
+# Convert ppm to mass
 sample_mg <- sample_ppm %>% 
-  mutate(mg_12CO2 = if_else(Soil=="Ag", mg_ag100*(ppm_12C*10^-6), mg_m100*(ppm_12C*10^-6)),
-         mg_13CO2 = if_else(Soil=="Ag", mg_ag100*(ppm_13C*10^-6), mg_m100*(ppm_13C*10^-6)),
-         mg_12C = mg_12CO2*0.273,
-         mg_13C = mg_13CO2*0.273) %>%
-  pivot_longer(!Sample:ppm_13C, names_to = "respiration", values_to = "mg") %>%
-  mutate(isotope = if_else(grepl("12C", respiration), "unlabelled", "labelled"),
-         molecule = if_else(grepl("CO2", respiration), "CO2", "C")) %>%
-  select(Sample:Day, isotope, molecule, respiration, mg)
+  mutate(mg_co2 = if_else(Soil=="Ag", mg_ag100*(ppm*10^-6), mg_m100*(ppm*10^-6)),
+         mg_c = mg_co2*0.273) %>% 
+  select(Microcosm, Soil, Litter, Day, Measurement, mg_co2, mg_c)
 ```
 
 Visualize:
-
 ```{r}
 sample_mg %>% 
-  filter(molecule=="CO2") %>% 
-  ggplot(aes(x=Date, y=mg, color=isotope)) +
+  ggplot(aes(x=Day, y=mg_co2, color=Measurement)) +
   geom_point() +
   facet_wrap(Litter~Soil) +
-  labs(title="CO2") +
-  theme_test() +
-  theme(axis.text.x = element_text(angle=45))
-
-sample_mg %>% 
-  filter(molecule=="C") %>% 
-  ggplot(aes(x=Date, y=mg, color=isotope)) +
-  geom_point() +
-  facet_wrap(Litter~Soil) +
-  labs(title="C") +
-  theme_test() +
-  theme(axis.text.x = element_text(angle=45))
+  theme_test()
 ```
 
-
-
-# WIP
-
-Save processed CO2 data:
+Save processed data:
 
 ```{r, eval=FALSE}
+saveRDS(sample_mg, "../data_intermediate/NIFA_repiration.rds")
 ```
 
-# Total CO2/C
-
-### Total
+# Total respiration
 
 ```{r}
-# Sum time points
-total_co2 <- sample_df %>% 
-  group_by(Soil, Replicate, litter) %>% 
-  summarize(total_co2 = sum(ppm_total)) %>% 
-  ungroup()
-
-# Summarize 
-total_co2 %>% 
-  group_by(Soil, litter) %>% 
-  summarize(avg_co2 = mean(total_co2), sd_co2 = sd(total_co2))
+# Sum across time points
+resp_total <- sample_mg %>% 
+  pivot_longer(!Microcosm:Measurement, names_to="molecule", values_to="mg") %>% 
+  mutate(molecule = if_else(grepl("co2", molecule), "co2", "c")) %>% 
+  group_by(Microcosm, Soil, Litter, Measurement, molecule) %>% # sum over time
+  summarize(mg = sum(mg)) %>% 
+  ungroup() 
 
 # Visualize
-total_co2 %>%
-  ggplot(aes(x=Soil, y=total_co2, color=litter)) +
+resp_total %>% 
+  filter(molecule=="c") %>% 
+  ggplot(aes(x=Soil, y=mg, color=Measurement)) +
   geom_point() +
+  facet_wrap(~Litter) +
   theme_test()
 ```
-
-Quickie stats:
-
-```{r}
-# Linear model
-totalco2_lm <- lm(total_co2 ~ Soil, filter(total_co2, litter=="Litter"))
-hist(resid(totalco2_lm))
-plot(predict(totalco2_lm), resid(totalco2_lm)) # heteroskedastic
-
-# Welch's t-test instead
-t.test(total_co2 ~ Soil, filter(total_co2, litter=="Litter"), var.equal=FALSE)
-```
-
-### 13CO2
-
-```{r}
-# Sum time points
-total_13co2 <- sample_df %>% 
-  mutate(ppm_13C = if_else(ppm_13C < 0, 0, ppm_13C)) %>% # remove negative intercepts
-  group_by(Soil, Replicate, litter) %>% 
-  summarize(total_13co2 = sum(ppm_13C)) %>% 
-  ungroup()
-
-# Summary
-total_13co2 %>% 
-  group_by(Soil, litter) %>% 
-  summarize(avg_13co2 = mean(total_13co2), sd_13co2 = sd(total_13co2))
-
-# Visualize
-total_13co2 %>%
-  ggplot(aes(x=Soil, y=total_13co2, color=litter)) +
-  geom_point() +
-  theme_test()
-```
-
-Quickie stats:
-
-```{r}
-# Linear model
-total13co2_lm <- lm(total_13co2 ~ Soil, filter(total_13co2, litter=="Litter"))
-hist(resid(total13co2_lm))
-plot(predict(total13co2_lm), resid(total13co2_lm)) # heteroskedastic
-
-# Welch's t-test instead
-t.test(total_13co2 ~ Soil, filter(total_13co2, litter=="Litter"), var.equal=FALSE)
-```
-
-### 12CO2
-
-```{r}
-# Sum time points
-total_12co2 <- sample_df %>% 
-  mutate(ppm_12C = if_else(ppm_12C < 0, 0, ppm_12C)) %>% # remove negative intercepts
-  group_by(Soil, Replicate, litter) %>% 
-  summarize(total_12co2 = sum(ppm_12C)) %>% 
-  ungroup()
-
-# Summary
-total_12co2 %>% 
-  group_by(Soil, litter) %>% 
-  summarize(avg_12co2 = mean(total_12co2), sd_12co2 = sd(total_12co2))
-
-# Visualize
-total_12co2 %>%
-  ggplot(aes(x=Soil, y=total_12co2, color=litter)) +
-  geom_point() +
-  theme_test()
-```
-
 
 # SCRAP
 
