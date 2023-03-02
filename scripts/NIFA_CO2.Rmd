@@ -187,7 +187,6 @@ std_df %>%
 
 There is definitely drift, appears that slope is decreasing? Highest std is most variable. Can it be removed?
 
-
 Check highest sample area vs std 5
 
 ```{r}
@@ -206,7 +205,7 @@ std_sample %>%
   theme(axis.text.x = element_text(angle=45))
 ```
 
-Highest sample areas are lower than std 5 for each tp and std 6 driftiing more than others.
+Highest sample areas are lower than std 5 for each tp and std 6 drifting much more than others.
 
 Date 05/29/23 has strangely compressed lower stds, going to remove and impute based on average of neighbors.
 
@@ -320,7 +319,7 @@ Atmospheric samples are very low, as expected. Ambient 2 is elevated, likely due
 
 # Samples
 
-Use calibration curve to convert sample areas into ppm:
+Convert sample areas into ppm:
 
 ```{r}
 sample_ppm <- sample_df %>% 
@@ -384,57 +383,161 @@ sample_ppm %>%
   facet_wrap(~Soil, nrow=2) +
   geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
   labs(title="No litter") +
-  theme_test()
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45))
+
+# No litter
+sample_ppm %>% 
+  filter(Litter=="none") %>% 
+  ggplot(aes(x=Date, y=ppm_13C)) +
+  geom_point(alpha=0.5) +
+  geom_vline(xintercept=12, linetype=2) +
+  geom_vline(xintercept=13, linetype=2) +
+  facet_wrap(~Soil, nrow=2) +
+  geom_text(aes(label=Microcosm), vjust="inward", hjust="inward", color="black") +
+  labs(title="No litter") +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45))
 ```
 
-Sample 190 likely experienced some issue with sampling. 
+Sample 190, 185, 186 13C have data drop outs, must be issue with headspace sampling or GCMS?
 
+Missing data on Day 05/26/22, according to lab notebook this is the first time the auto-injector on the GCMS first failed, samples were lost.
+
+It looks like no litter Meadow 13C sample on 06/10/22 was maybe mixed up with a litter-added sample, noted.
 
 Notes:
-* I think sample 186 on 5/31 is a failure because both 13C and 12C are 0
-* Why is 13C so low on 5/29? 12C isn't?? If leakage issue both would be low???
-* more like a below detection threshold issue due to slope and intercept of stds?
+* I think Ag 186 on 5/31/22 is a headspace sampling failure because both 13C and 12C are 0
+* Sample Meadow 190 on 5/23/22 and Ag 185 on 6/12/22 likely GCMS error of some sort because 13CO2 measurement very low with expected 12CO2 values
 
-# WIP BELOW
+## Impute dropped data
+
+Drop outs:
+* Most samples on 05/26/22 (GCMS auto-injector failed and headspace lost)
+* Meadow 190 13C on 05/23/22 (13C detection issue?)
+* Ag 185 13C on 06/12/22 (13C detection issue?)
+* Ag 186 13C and 12C on 05/31/22 (headspace lost)
+
+Calculate averages of nearest neighbors:
+
+# BOOKMARK
+```{r}
+# Add labels
+sample_ppm <- sample_ppm %>% 
+  select(Sample:Day, )
+  pivot_longer(-Sample:Day, )
+  
+  
+sample_ppm <- sample_ppm %>% 
+  mutate(label = paste0(label = paste0(Microcosm, Soil, Litter, Date)))
+
+drop_labs <- c("190Meadowlitterlabelled052322", "185Aglitterlabelled06122", 
+               "186Aglitterlabelled053122", "186Aglitterunlabelled053122",
+               "187Meadowlitterlabelled052622", "187Meadowlitterunlabelled052622",
+               "188Meadowlitterlabelled052622", "188Meadowlitterunlabelled052622",
+               "189Meadowlitterlabelled052622", "189Meadowlitterunlabelled052622",
+               "190Meadowlitterlabelled052622", "190Meadowlitterunlabelled052622")
+
+# CO2
+imp_m13C02190 <- sample_mg %>% 
+  filter((Microcosm==190 & isotope=="labelled" & molecule=="CO2" & Soil=="Meadow") & (Date=="052222" | Date=="052422")) %>%
+  summarize(mean(mg)) %>% 
+  as.numeric()
+
+imp_ag13C02185 <- sample_mg %>% 
+  filter((Microcosm==185 & isotope=="labelled" & molecule=="CO2" & Soil=="Ag") & (Date=="061022" | Date=="061422")) %>%
+  summarize(mean(mg)) %>% 
+  as.numeric()
+
+imp_ag13C02186 <- sample_mg %>% 
+  filter((Microcosm==186 & isotope=="labelled" & molecule=="CO2" & Soil=="Ag") & (Date=="052922" | Date=="060222")) %>%
+  summarize(mean(mg)) %>% 
+  as.numeric()
+
+imp_ag12C02186 <- sample_mg %>% 
+  filter((Microcosm==186 & isotope=="unlabelled" & molecule=="CO2" & Soil=="Ag") & (Date=="052922" | Date=="060222")) %>%
+  summarize(mean(mg)) %>% 
+  as.numeric()
+```
+
+Replace:
+
+```{r}
+drop_labs <- 
+
+sample_imp <- sample_mg %>% 
+  mutate(label = paste0(Microcosm, Soil, Litter, isotope, molecule))
+```
+
+
+
+
+
 
 Calculate mg C:
-
-# need estimate on headspace of serum bottles with soil
 
 ```{r}
 # Ideal gas law: n=(P*V)/(R*temp)
 # NOTE: pressure does not matter for this calulation because it's all relative to the stds
 R <- 0.082057338 # universal gas constant, (L*atm)/(mol*K)
 temp <- 296.48 # K, 74F in lab throughout experiment
-V <- 0.013 # L, headspace of 30 mL serum bottle with soil
+V_m <- 0.1 # L, headspace of 100 mL serum bottle with soil, meadow
+V_ag <- 0.104 # L, headspace of 100 mL serum bottle with soil, ag
 mwCO2 <- 44.01 # molecular weight (g/mol) of CO2
 P <- 1 #atm, assumes 1 atm in ucosms during sampling
 
-# Calculate per time point
-molCO2100 <- P*V/(R*temp) # total mol of CO2 in headspace, if it were 100% CO2
-mgCO2100 <- molCO2100 * mwCO2*1000 # mol * g/mol * 1000mg/g = mg, mg of CO2 present if it were 100% CO2
+# mol CO2 if headspace were 100% CO2
+mol_ag100 <- P*V_ag/(R*temp)
+mol_m100 <- P*V_m/(R*temp)
 
-sample_mgC <- sample_ppm %>% 
-  mutate(mg_12co2 = mgCO2100*(ppm_12C*10^-6),
-         mg_12c = mg_12co2*0.273, # 27% of mol. mass of co2 is C
-         mg_13co2 = mgCO2100*(ppm_13C*10^-6),
-         mg_13c = mg_13co2*0.273) # 27% of mol. mass of co2 is C
+# mg CO2 if headspace were 100% CO2
+mg_ag100 <- mol_ag100*mwCO2*1000
+mg_m100 <- mol_m100*mwCO2*1000
+
+# Convert to mass based on ppm
+sample_mg <- sample_ppm %>% 
+  mutate(mg_12CO2 = if_else(Soil=="Ag", mg_ag100*(ppm_12C*10^-6), mg_m100*(ppm_12C*10^-6)),
+         mg_13CO2 = if_else(Soil=="Ag", mg_ag100*(ppm_13C*10^-6), mg_m100*(ppm_13C*10^-6)),
+         mg_12C = mg_12CO2*0.273,
+         mg_13C = mg_13CO2*0.273) %>%
+  pivot_longer(!Sample:ppm_13C, names_to = "respiration", values_to = "mg") %>%
+  mutate(isotope = if_else(grepl("12C", respiration), "unlabelled", "labelled"),
+         molecule = if_else(grepl("CO2", respiration), "CO2", "C")) %>%
+  select(Sample:Day, isotope, molecule, respiration, mg)
 ```
+
+Visualize:
+
+```{r}
+sample_mg %>% 
+  filter(molecule=="CO2") %>% 
+  ggplot(aes(x=Date, y=mg, color=isotope)) +
+  geom_point() +
+  facet_wrap(Litter~Soil) +
+  labs(title="CO2") +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45))
+
+sample_mg %>% 
+  filter(molecule=="C") %>% 
+  ggplot(aes(x=Date, y=mg, color=isotope)) +
+  geom_point() +
+  facet_wrap(Litter~Soil) +
+  labs(title="C") +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45))
+```
+
+
+
+# WIP
 
 Save processed CO2 data:
 
 ```{r, eval=FALSE}
 ```
 
-
-# CO2 rate / day
-
-```{r}
-
-```
-
-
-# Cumulative CO2
+# Total CO2/C
 
 ### Total
 
@@ -524,5 +627,30 @@ total_12co2 %>%
   geom_point() +
   theme_test()
 ```
+
+
+# SCRAP
+
+Test for autocorrelation in time series:
+
+```{r}
+ts_190M13CO2 <- sample_mg %>% 
+  filter(Microcosm==190 & isotope=="labelled" & molecule=="CO2" & Soil=="Meadow") %>% # isolate Meadow 13CO2 time series
+  filter(Date!="052322") %>% # remove drop out time point for autocorrelation test
+  select(mg) %>% # convert into ts object type
+  as.ts() 
+
+ts_186Ag13CO2 <- sample_mg %>% 
+  filter(Microcosm==186 & isotope=="labelled" & molecule=="CO2" & Soil=="Ag") %>% # isolate Meadow 13CO2 time series
+  filter(Date!="052322") %>% # remove drop out time point for autocorrelation test
+  select(mg) %>% # convert into ts object type
+  as.ts()
+  
+# Autocorrelation
+pacf(ts_190M13CO2)
+pacf(ts_186Ag13CO2)
+```
+
+Could this be used to test for oscillation in bacterial abundance data?
 
 
