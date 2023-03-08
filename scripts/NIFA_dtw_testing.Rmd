@@ -23,6 +23,14 @@ library("doParallel")
 sessionInfo()
 ```
 
+# Resources
+
+DTW: https://rtavenar.github.io/blog/dtw.html
+
+DTW and hierarchical clustering: https://tomytjandra.github.io/blogs/r/time-series/clustering/2020/11/04/time-series-hierarchical-clustering.html#Determine-optimal-clusters
+
+Validation: https://stats.stackexchange.com/questions/195456/how-to-select-a-clustering-method-how-to-validate-a-cluster-solution-to-warran/195481#195481
+
 # Import test data
 
 File generated in NIFA_growth_estimation_ind.Rmd
@@ -33,6 +41,8 @@ test <- readRDS("../data_intermediate/NIFA_norm_dtwtest.rds")
 ```
 
 Visualize time series:
+
+Chosen based on overall shape, looked for steadily increasing, increasing then decreasing, and oscillating.
 
 ```{r}
 # Indvidual
@@ -294,7 +304,7 @@ test_long %>%
 
 ## All pair-wise comparisons
 
-Defaults for now
+Using defaults:
 
 ```{r, warning=FALSE}
 dtw_df <- data.frame()
@@ -323,7 +333,7 @@ dist_s1 <- data.frame(dtw_df[1,]) %>%
 test_long %>% 
   left_join(dist_s1, by="series") %>% 
   mutate(series = as.character(series)) %>% 
-  ggplot(aes(x=Day, y=abund_norm, color=series, size=-dtw_dist)) +
+  ggplot(aes(x=Day, y=abund_norm, color=-dtw_dist)) +
   geom_point() +
   geom_line() +
   #geom_smooth(method="loess", se=F) +
@@ -333,7 +343,7 @@ test_long %>%
 test_long %>% 
   left_join(dist_s1, by="series") %>% 
   mutate(series = as.character(series)) %>% 
-  ggplot(aes(x=Day, y=abund_norm, color=series, size=-dtw_dist)) +
+  ggplot(aes(x=Day, y=abund_norm, color=-dtw_dist)) +
   #geom_point() +
   #geom_line() +
   geom_smooth(method="loess", se=F) +
@@ -353,7 +363,7 @@ dist_s13 <- data.frame(dtw_df[13,]) %>%
 test_long %>% 
   left_join(dist_s13, by="series") %>% 
   mutate(series = as.character(series)) %>% 
-  ggplot(aes(x=Day, y=abund_norm, color=series, size=-dtw_dist)) +
+  ggplot(aes(x=Day, y=abund_norm, color=-dtw_dist)) +
   geom_point() +
   geom_line() +
   #geom_smooth(method="loess", se=F) +
@@ -363,7 +373,7 @@ test_long %>%
 test_long %>% 
   left_join(dist_s13, by="series") %>% 
   mutate(series = as.character(series)) %>% 
-  ggplot(aes(x=Day, y=abund_norm, color=series, size=-dtw_dist)) +
+  ggplot(aes(x=Day, y=abund_norm, color=-dtw_dist)) +
   #geom_point() +
   #geom_line() +
   geom_smooth(method="loess", se=F) +
@@ -371,9 +381,296 @@ test_long %>%
   theme_test()
 ```
 
-# Clustering
+Cannot use constrained algorithms because time series are different lengths. I'm going to shy away from setting window constraints as well because I'm not sure how to justify one window length over another with this data.
+
+Convert to distance matrix:
+
+https://stackoverflow.com/questions/11343637/convert-a-dataframe-to-an-object-of-class-dist-without-actually-calculating-di
 
 ```{r}
+# Reformat
+dtw_df2 <- dtw_df %>% 
+  rownames_to_column(var="series1") %>% 
+  pivot_longer(-series1, names_to = "series2", values_to = "dist") %>% 
+  mutate(series1 = as.numeric(series1),
+         series2 = as.numeric(gsub("...([0-9]+)", "\\1", series2))) %>% 
+  filter(dist!=0) # remove self-comparisons
 
+# Convert to dist class object
+dtw_dist <- with(dtw_df2, dist)
+series <- with(dtw_df2, unique(c(as.character(series1), as.character(series2))))
+attributes(dtw_dist) <- with(dtw_df2, list(Size = length(series),
+                                    Labels = series),
+                                    Diag = FALSE,
+                                    Upper = FALSE,
+                                    method = "user")
+class(dtw_dist) <- "dist"
 ```
 
+# Hierarchical clustering
+
+## Agglomerative
+
+```{r}
+library(factoextra)
+library(cluster)
+
+# Trying single, average, and complete linkage
+## single linkage tends to produce stringy clusters, wards and centroid likely unsuitable for time series data
+## would prefer to try medoid linkage but isn't an option in agnes function??
+## function defaults to euclidean distances
+agnes_sing <- agnes(dtw_dist, metric="euclidean", method = "single")
+agnes_compl <- agnes(dtw_dist, metric="euclidean", method = "complete")
+agnes_avg <- agnes(dtw_dist, metric="euclidean", method = "average")
+plot(agnes_sing)
+plot(agnes_compl)
+plot(agnes_avg)
+```
+
+Complete linkage seems to produce best results based on agglomerative coefficient and longer dendogram branch lengths. I clearly see 3-4 clusters using the complete linkage method. This reflects the number of shapes I had in mind while choosing these testing time series.
+
+Euclidean vs Manhattan for complete linkage:
+
+```{r}
+agnes_compl_man <- agnes(dtw_dist, metric="manhattan", method = "complete")
+plot(agnes_compl)
+plot(agnes_compl_man)
+```
+
+No difference.
+
+## Divisive
+
+```{r}
+diana_euc <- diana(dtw_dist)
+diana_man <- diana(dtw_dist, metric="manhattan")
+
+plot(diana_euc)
+plot(diana_man)
+```
+
+Looks weird, seems that agglomerative clustering performed better in differentiating clusters.
+
+# Choose number of clusters
+
+Functions from: https://tomytjandra.github.io/blogs/r/time-series/clustering/2020/11/04/time-series-hierarchical-clustering.html#Determine-optimal-clusters
+
+```{r}
+# Function
+scree_plot_hc <- function(hc, which.plots = 1) {
+  df <-
+    data.frame(k = 1:length(hc$height),
+               h = rev(sort(hc$height))) %>% 
+    mutate(gap = abs(h - lag(h)))
+  
+  if (which.plots == 1) {
+    
+    p <- ggplot(df, aes(x = k, y = h)) +
+      geom_line(color = 'blue') +
+      geom_point(size = 0.75) +
+      labs(x = "Number of clusters k",
+           y = "Height",
+           title = "Scree Plot") +
+      theme_classic()
+    
+    print(p)
+    
+  } else if (which.plots == 2) {
+    
+    df %>% 
+      arrange(desc(gap)) %>% 
+      top_n(10) %>% 
+      ggplot(aes(x = reorder(k, -gap), y = gap)) +
+      geom_col() +
+      labs(x = "Number of clusters k",
+           y = "Height Gap",
+           title = "Largest Gap Method") +
+      theme_classic()
+    
+  }
+}
+```
+
+## Scree plot
+
+```{r}
+scree_plot_hc(agnes_compl, which.plots = 1)
+```
+
+## Height gaps
+
+```{r}
+scree_plot_hc(agnes_compl, which.plots = 2)
+```
+
+## Silhouettes
+
+Describes similarity to observation to its own cluster. Positive silhouette width is more similar, negative is less similar.
+
+3 clusters:
+
+```{r}
+hc <- cutree(agnes_compl, k = 3)
+sil <- silhouette(hc, dtw_dist)
+plot(sil, col=1:3, main="3 clusters")
+summary(sil)
+```
+
+Cluster one seems to have two major outliers, indicating it might best be split into two groups. Cluster 2 has one minor outlier but balanced out by positive widths within rest of cluster.
+
+5 clusters:
+
+```{r}
+hc_5 <- cutree(agnes_compl, k = 5)
+sil_5 <- silhouette(hc_5, dtw_dist)
+plot(sil_5, col=1:5, main="5 clusters")
+summary(sil_5)
+```
+
+7 clusters:
+
+```{r}
+hc_7 <- cutree(agnes_compl, k = 7)
+sil_7 <- silhouette(hc_7, dtw_dist)
+plot(sil_7, col=1:7, main="7 clusters")
+summary(sil_7)
+```
+
+7 clusters removes outlier problem, but seems like a lot of cluster for so few observations.
+
+Less is more in this situation so let's consider 3 and 5 clusters.
+
+## Plot clusters w/time series
+
+```{r}
+library("dendextend")
+
+# 3 clusters
+dend_viz <- color_branches(as.hclust(agnes_compl), k = 3)
+plot(dend_viz, main="3 clusters")
+
+# 5 clusters
+dend_viz <- color_branches(as.hclust(agnes_compl), k = 5)
+plot(dend_viz, main="5 clusters")
+```
+
+3 clusters:
+
+```{r}
+# 3 clusters
+final_cluster3 <- cutree(as.hclust(agnes_compl), k = 3)
+table(final_cluster3)
+
+# number of time series per cluster
+cluster_mapping3 <- rownames_to_column(as.data.frame(final_cluster3),
+                     var = "series") %>% 
+  rename(cluster = final_cluster3) %>% 
+  mutate(cluster = as.factor(cluster),
+         series = as.integer(series))
+
+# Add cluster info to time series dataframe
+clustered_order_agnes <- test_long  %>% 
+  left_join(cluster_mapping3, by = "series") 
+
+# graph time series by cluster
+ggplot(data = clustered_order_agnes,
+       aes(x = Day, y = abund_norm,
+           group = series,
+           color = cluster)) +
+  geom_line() +
+  facet_grid(rows = vars(cluster), scales = 'free') +
+  theme_test()
+```
+
+5 clusters:
+
+```{r}
+# 5 clusters
+final_cluster5 <- cutree(as.hclust(agnes_compl), k = 5)
+table(final_cluster5)
+
+# number of time series per cluster
+cluster_mapping5 <- rownames_to_column(as.data.frame(final_cluster5),
+                     var = "series") %>% 
+  rename(cluster = final_cluster5) %>% 
+  mutate(cluster = as.factor(cluster),
+         series = as.integer(series))
+
+# Add cluster info to time series dataframe
+clustered_order_agnes5 <- test_long  %>% 
+  left_join(cluster_mapping5, by = "series") 
+
+# graph time series by cluster
+ggplot(data = clustered_order_agnes5,
+       aes(x = Day, y = abund_norm,
+           group = series,
+           color = cluster)) +
+  geom_line() +
+  facet_grid(rows = vars(cluster), scales = 'free') +
+  theme_test()
+```
+
+Let's focus on 3 clusters for simplicities' sake.
+
+```{r}
+library("ggpubr")
+
+options(repr.plot.width=5, repr.plot.height=15)
+
+# left: time series
+left <- ggplot(data = clustered_order_agnes %>% 
+               mutate(series = factor(series,
+                                    levels = as.numeric(agnes_compl$order.lab))),
+       aes(x = Day, y = abund_norm,
+           group = series,
+           color = cluster)) +
+  geom_line(lwd = 1) +
+  facet_wrap(~series, ncol = 1, scales = "free", strip.position = "left") +
+  guides(color = "none") +
+  theme_void() +
+  theme(strip.text.y = element_text(size = 12, face = "bold"))
+
+# right: dendrogram
+library("ggdendro")
+
+cluster_mapping32 <- cluster_mapping3 %>% 
+  mutate(series = as_factor(series))
+
+data <- dendro_data(agnes_compl)
+right <- ggplot() + 
+  geom_segment(data = segment(data),
+               aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_point(data = data$labels %>%
+               left_join(cluster_mapping32, by = c("label" = "series")),
+             aes(x = x, y = y, color = cluster), size = 3) +
+  scale_x_reverse() +
+  coord_flip() +
+  guides(color = "none") +
+  theme_void() +
+  theme(plot.margin=unit(c(-0.03, 0, -0.04, 0), "null"))
+
+ggarrange(left, right)
+```
+
+# Original log time series
+
+```{r}
+# Cluster mapping with series labels
+series_lab_clust <- test_long %>% 
+  select(series, label) %>% 
+  unique() %>% 
+  left_join(cluster_mapping3, by = "series")
+
+# Add to ln data
+test_ln_clust <- left_join(test_ln, series_lab_clust)
+```
+
+```{r}
+test_ln_clust %>% 
+  ggplot(aes(x=Day, y=abund_ln, color=cluster)) +
+  geom_smooth(aes(group=series), se=F) +
+  facet_wrap(~cluster) +
+  theme_test()
+```
+
+I'm failing to see the differences between clusters. Maybe I need to experiment with my preprocessing steps first?

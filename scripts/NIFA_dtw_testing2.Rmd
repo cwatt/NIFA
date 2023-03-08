@@ -1,0 +1,421 @@
+---
+title: "NIFA_dtw_testing2"
+author: "Cassandra Wattenburger"
+date: "3/7/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+library("dtwclust")
+library("parallel")
+library("doParallel")
+library("factoextra")
+library("cluster")
+library("dendextend")
+library("ggpubr")
+
+sessionInfo()
+```
+
+# Import test data
+
+File generated in NIFA_growth_estimation_ind.Rmd
+
+```{r}
+# Testing data
+test <- readRDS("../data_intermediate/NIFA_norm_dtwtest.rds")
+```
+
+# Tranformation
+
+This time leaving out offset transformation.
+
+## Log transform
+
+Log tranformation is important because this is how we usually interpret microbial growth data. Is it appropriate in this context though?
+
+```{r}
+# Natural log transform
+test_ln <- test %>% 
+  mutate(abund = norm_abund,
+         abund_ln = log(norm_abund)) %>% 
+  select(label:Day, abund:abund_ln)
+
+# Visualize
+test %>% 
+  ggplot(aes(x=Day, y=norm_abund, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  labs(title="Raw") +
+  theme_test() +
+  theme(legend.position = "none")
+
+test_ln %>% 
+  ggplot(aes(x=Day, y=abund_ln, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  labs(title="ln") +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+## Min/max norm. ln data
+
+```{r}
+# Mins and maxes of each time series
+ts_minmax_ln <- test_ln %>% 
+  group_by(label) %>% 
+  summarize(ts_min = min(abund_ln),
+            ts_max = max(abund_ln))
+
+# Normalize
+# y = (x - min) / (max - min)
+test_norm <- test_ln %>% 
+  left_join(ts_minmax_ln, by="label") %>%
+  mutate(abund_norm = (abund_ln - ts_min)/(ts_max - ts_min))
+
+# Visualize
+test_norm %>% 
+  ggplot(aes(y=abund_norm, x=Day, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  labs(title="Normalized ln") +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+Turns out the offsetting did nothing! This is exactly the same as in the first script. But that still doesn't explain my clusters being difficult to distinguish...
+
+## Min/max norm. raw data
+
+```{r}
+# Mins and maxes of each time series
+ts_minmax_raw <- test %>% 
+  group_by(label) %>% 
+  summarize(ts_min = min(norm_abund),
+            ts_max = max(norm_abund))
+
+# Normalize
+# y = (x - min) / (max - min)
+test_norm_raw <- test %>% 
+  left_join(ts_minmax_raw, by="label") %>%
+  mutate(abund_norm = (norm_abund - ts_min)/(ts_max - ts_min))
+
+# Visualize
+test_norm_raw %>% 
+  ggplot(aes(y=abund_norm, x=Day, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  labs("Normalized raw") +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+## Simple feature scaling on raw data
+
+https://towardsai.net/p/data-science/scaling-vs-normalizing-data-5c3514887a84
+
+```{r}
+test_scale <- test %>% 
+  left_join(ts_minmax_raw, by="label") %>%
+  mutate(abund_scale = (norm_abund/ts_max))
+
+# Visualize
+test_scale %>% 
+  ggplot(aes(y=abund_scale, x=Day, color=label)) +
+  geom_smooth(method="loess", se=F) +
+  labs("Scaled raw") +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+Looks very similar to min and max normalization.
+
+Let's try clustering the raw normalized data using the same parameters
+
+```{r}
+# Give each unique time series a number
+series_nums <- data.frame("label"=unique(as.character(test_norm$label)),
+                          "series"=1:length(unique(as.character(test_norm$label))))
+
+# Wide and long format
+test_long <- test_norm_raw %>% 
+  left_join(series_nums, by="label") %>%
+  select(series, label, Day, abund_norm)
+
+test_wide <- test_long %>% 
+  pivot_wider(names_from=Day, values_from=abund_norm)
+```
+
+# DTW
+
+```{r, warning=FALSE}
+dtw_df <- data.frame()
+
+for (s1 in as.numeric(test_wide$series)) { 
+  this_row <- NULL
+  data_s1 <- na.omit(as.numeric(test_wide[s1,3:ncol(test_wide)]))
+  for (s2 in 1:nrow(test_wide)) {
+    data_s2 <- na.omit(as.numeric(test_wide[s2,3:ncol(test_wide)]))
+    dtw_temp <- dtw_basic(data_s1, data_s2) # calculate DTW
+    this_row <- bind_cols(this_row, dtw_temp)
+  }
+  dtw_df <- bind_rows(dtw_df, this_row)
+}
+```
+
+# Agglomerative hierarchical clustering
+
+```{r}
+# Reformat
+dtw_df2 <- dtw_df %>% 
+  rownames_to_column(var="series1") %>% 
+  pivot_longer(-series1, names_to = "series2", values_to = "dist") %>% 
+  mutate(series1 = as.numeric(series1),
+         series2 = as.numeric(gsub("...([0-9]+)", "\\1", series2))) %>% 
+  filter(dist!=0) # remove self-comparisons
+
+# Convert to dist class object
+dtw_dist <- with(dtw_df2, dist)
+series <- with(dtw_df2, unique(c(as.character(series1), as.character(series2))))
+attributes(dtw_dist) <- with(dtw_df2, list(Size = length(series),
+                                    Labels = series),
+                                    Diag = FALSE,
+                                    Upper = FALSE,
+                                    method = "user")
+class(dtw_dist) <- "dist"
+```
+
+```{r}
+agnes_compl <- agnes(dtw_dist, metric="euclidean", method = "complete")
+plot(agnes_compl)
+```
+
+Agglomerative coefficient was slightly higher using the normalized ln data (0.76).
+
+Dendrogram looks similar in overall structure but interestingly series are in different locations.
+
+# Cluster number
+
+```{r}
+# Function
+scree_plot_hc <- function(hc, which.plots = 1) {
+  df <-
+    data.frame(k = 1:length(hc$height),
+               h = rev(sort(hc$height))) %>% 
+    mutate(gap = abs(h - lag(h)))
+  
+  if (which.plots == 1) {
+    
+    p <- ggplot(df, aes(x = k, y = h)) +
+      geom_line(color = 'blue') +
+      geom_point(size = 0.75) +
+      labs(x = "Number of clusters k",
+           y = "Height",
+           title = "Scree Plot") +
+      theme_classic()
+    
+    print(p)
+    
+  } else if (which.plots == 2) {
+    
+    df %>% 
+      arrange(desc(gap)) %>% 
+      top_n(10) %>% 
+      ggplot(aes(x = reorder(k, -gap), y = gap)) +
+      geom_col() +
+      labs(x = "Number of clusters k",
+           y = "Height Gap",
+           title = "Largest Gap Method") +
+      theme_classic()
+    
+  }
+}
+```
+
+```{r}
+# Scree plot
+scree_plot_hc(agnes_compl, which.plots = 1)
+
+# Largest gap
+scree_plot_hc(agnes_compl, which.plots = 2)
+
+# Silhouette, 2 clusters
+hc <- cutree(agnes_compl, k = 2)
+sil <- silhouette(hc, dtw_dist)
+plot(sil, col=1:2, main="2 clusters")
+summary(sil)
+
+# Silhouette, 3 clusters
+hc <- cutree(agnes_compl, k = 3)
+sil <- silhouette(hc, dtw_dist)
+plot(sil, col=1:3, main="3 clusters")
+summary(sil)
+
+# Silhouette, 4 clusters
+hc <- cutree(agnes_compl, k = 4)
+sil <- silhouette(hc, dtw_dist)
+plot(sil, col=1:4, main="4 clusters")
+summary(sil)
+```
+
+```{r}
+# 2 clusters
+dend_viz <- color_branches(as.hclust(agnes_compl), k = 2)
+plot(dend_viz, main="2 clusters")
+
+# 3 clusters
+dend_viz <- color_branches(as.hclust(agnes_compl), k = 3)
+plot(dend_viz, main="3 clusters")
+
+# 4 clusters
+dend_viz <- color_branches(as.hclust(agnes_compl), k = 4)
+plot(dend_viz, main="4 clusters")
+```
+
+4 clusters seems best in this case although there is a major outlier in cluster 1 (series 19?).
+
+# Plot series by cluster
+
+2 clusters:
+
+```{r}
+# 4 clusters
+final_cluster2 <- cutree(as.hclust(agnes_compl), k = 2)
+table(final_cluster2)
+
+# number of time series per cluster
+cluster_mapping2 <- rownames_to_column(as.data.frame(final_cluster2),
+                     var = "series") %>% 
+  rename(cluster = final_cluster2) %>% 
+  mutate(cluster = as.factor(cluster),
+         series = as.integer(series))
+
+# Add cluster info to time series dataframe
+clustered_order_agnes <- test_long  %>% 
+  left_join(cluster_mapping2, by = "series") 
+
+# graph time series by cluster
+ggplot(data = clustered_order_agnes,
+       aes(x = Day, y = abund_norm,
+           group = series,
+           color = cluster)) +
+  geom_line() +
+  facet_grid(rows = vars(cluster), scales = 'free') +
+  theme_test()
+```
+
+3 clusters:
+
+```{r}
+# 3 clusters
+final_cluster3 <- cutree(as.hclust(agnes_compl), k = 3)
+table(final_cluster3)
+
+# number of time series per cluster
+cluster_mapping3 <- rownames_to_column(as.data.frame(final_cluster3),
+                     var = "series") %>% 
+  rename(cluster = final_cluster3) %>% 
+  mutate(cluster = as.factor(cluster),
+         series = as.integer(series))
+
+# Add cluster info to time series dataframe
+clustered_order_agnes <- test_long  %>% 
+  left_join(cluster_mapping3, by = "series") 
+
+# graph time series by cluster
+ggplot(data = clustered_order_agnes,
+       aes(x = Day, y = abund_norm,
+           group = series,
+           color = cluster)) +
+  geom_line() +
+  facet_grid(rows = vars(cluster), scales = 'free') +
+  theme_test()
+```
+
+4 clusters:
+
+```{r}
+# 4 clusters
+final_cluster4 <- cutree(as.hclust(agnes_compl), k = 4)
+table(final_cluster4)
+
+# number of time series per cluster
+cluster_mapping4 <- rownames_to_column(as.data.frame(final_cluster4),
+                     var = "series") %>% 
+  rename(cluster = final_cluster4) %>% 
+  mutate(cluster = as.factor(cluster),
+         series = as.integer(series))
+
+# Add cluster info to time series dataframe
+clustered_order_agnes <- test_long  %>% 
+  left_join(cluster_mapping4, by = "series") 
+
+# graph time series by cluster
+ggplot(data = clustered_order_agnes,
+       aes(x = Day, y = abund_norm,
+           group = series,
+           color = cluster)) +
+  geom_line() +
+  facet_grid(rows = vars(cluster), scales = 'free') +
+  theme_test()
+```
+
+Looks like cluster 3 is the outlier bin.
+
+From what I can tell, the ln transform at the beginning affects where time series end up, if not the number of appropriate clusters. I will stick with log transforming because it is the accepted method of viewing bacterial growth curves.
+
+Maybe patterns will resolve better with more data to pull in? Noise might be too great.
+
+# Principle components
+
+Probably should have tried this before clustering...
+
+```{r}
+dtw_pc <- prcomp(dtw_dist)
+summary(dtw_pc)
+
+dtw_pc_df <- dtw_pc$x %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var="series") %>% 
+  mutate(series = as.numeric(series))
+
+# No clusters
+dtw_pc_df %>% 
+  ggplot(aes(x=PC1, y=PC2)) +
+  geom_point() + 
+  geom_text(aes(label=series), hjust=2, vjust=1) +
+  theme_test()
+
+# 2 clusters
+dtw_pc_df %>% 
+  left_join(cluster_mapping2) %>% 
+  ggplot(aes(x=PC1, y=PC2, color=cluster)) +
+  geom_point() + 
+  geom_text(aes(label=series), hjust=2, vjust=1) +
+  theme_test()
+
+# 3 clusters
+dtw_pc_df %>% 
+  left_join(cluster_mapping3) %>% 
+  ggplot(aes(x=PC1, y=PC2, color=cluster)) +
+  geom_point() + 
+  geom_text(aes(label=series), hjust=2, vjust=1) +
+  theme_test()
+
+# 4 clusters
+dtw_pc_df %>% 
+  left_join(cluster_mapping4) %>% 
+  ggplot(aes(x=PC1, y=PC2, color=cluster)) +
+  geom_point() + 
+  geom_text(aes(label=series), hjust=2, vjust=1) +
+  theme_test()
+
+```
+

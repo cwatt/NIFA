@@ -25,7 +25,7 @@ Note: Files exported from Shimadzu PostRun Analysis software as ASCII. In GCMS P
 
 This script is built to run on data that has been stored in a project directory containing a "data" directory with sub-directories for each time point that .txt files with the GCMS output for each sample.
 
-Why is this so slow???
+Why is this so slow??? Would it be faster in python?
 
 ```{r}
 # List of directories containing data files
