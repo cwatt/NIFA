@@ -1,0 +1,386 @@
+---
+title: 'NIFA - dynamic time warping and hierarchical clustering'
+author: "Cassandra Wattenburger"
+date: "3/8/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+
+sessionInfo()
+```
+
+# Import, prep data
+
+```{r}
+# Normalized abundances
+ts_abund <- readRDS("../data_intermediate/NIFA_norm_prepped.rds")
+
+# Growth estimates
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+# Growing taxa labels
+growth_labs <- growth %>% 
+  select(label) %>% 
+  unique()
+
+# Reformat
+# Remove no-growth time series
+ts_abund_gr <- ts_abund %>% 
+  semi_join(growth_labs)
+
+# Series numbers
+ts_nums <- ts_abund_gr %>%
+  select(label) %>%
+  unique() %>% 
+  add_column(ts = 1:nrow(.))
+
+# Clean up
+ts_abund_gr <- left_join(ts_abund_gr, ts_nums) %>% 
+  select(ts, label, day=Day, abund=norm_abund)
+
+
+# TROUBLESHOOTING
+ts_abund_gr %>% 
+  group_by(ts) %>% 
+  summarize(days = n()) %>% 
+  ungroup() 
+
+
+
+```
+
+Visualize:
+
+Raw time series
+
+```{r}
+# Randomly select 50 time series for preprocessing comparisons
+set.seed(50)
+rand_ts <- sample(unique(ts_abund_gr$ts), 20)
+```
+
+```{r}
+# All
+ts_abund_gr %>% 
+  ggplot(aes(x=day, y=abund)) +
+  geom_line(aes(group=ts), alpha=0.2) +
+  labs(title="All") +
+  theme_test()
+
+# random 50
+ts_abund_gr %>% 
+  filter(ts %in% rand_ts) %>% 
+  ggplot(aes(x=day, y=abund)) +
+  geom_line(aes(group=ts, color=label)) +
+  labs(title="50 random") +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+# Preprocessing
+
+## ln transform
+
+This is how bacterial growth data is typically viewed and interpretted due to exponential growth characteristic.
+
+Decreases impact of differences in starting or ending abundances on dissimilarity.
+
+```{r}
+ts_abund_gr <- ts_abund_gr %>% 
+  mutate(abund_ln = log(abund))
+```
+
+Visualize:
+
+```{r}
+# All
+ts_abund_gr %>% 
+  ggplot(aes(x=day, y=abund_ln)) +
+  geom_line(aes(group=ts), alpha=0.2) +
+  labs(title="All") +
+  theme_test()
+
+# random 50
+ts_abund_gr %>% 
+  filter(ts %in% rand_ts) %>% 
+  ggplot(aes(x=day, y=abund_ln)) +
+  geom_line(aes(group=ts, color=label)) +
+  labs(title="50 random") +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+## Min/max normalize
+
+x_norm = (x - min)/(max - min)
+
+Forces time series between 0 and 1 so that all time series are within comparable range.
+
+```{r}
+# Mins and maxes of each time series
+ts_minmax <- ts_abund_gr %>% 
+  group_by(label) %>% 
+  summarize(ts_min = min(abund_ln),
+            ts_max = max(abund_ln))
+
+# Normalize
+# y = (x - min) / (max - min)
+ts_abund_gr <- ts_abund_gr %>% 
+  left_join(ts_minmax, by="label") %>%
+  mutate(abund_norm = (abund_ln - ts_min)/(ts_max - ts_min)) %>% 
+  select(ts, label, day, abund, abund_ln, abund_norm)
+```
+
+Visualize:
+
+```{r}
+# All
+ts_abund_gr %>% 
+  ggplot(aes(x=day, y=abund_norm)) +
+  geom_line(aes(group=ts), alpha=0.2) +
+  labs(title="All") +
+  theme_test()
+
+# random 50
+ts_abund_gr %>% 
+  filter(ts %in% rand_ts) %>% 
+  ggplot(aes(x=day, y=abund_norm)) +
+  geom_line(aes(group=ts, color=label)) +
+  labs(title="50 random") +
+  theme_test() +
+  theme(legend.position = "none")
+```
+
+## Reformat to list
+
+DTW function with parallelization likes this format.
+
+```{r}
+# Wide format
+ts_abund_wide <- ts_abund_gr %>% 
+  select(ts, label, day, abund_norm) %>% 
+  pivot_wider(names_from=day, values_from=abund_norm)
+
+# Create named list of time series
+ts_abund_list <- list()
+labels <- as.character(ts_abund_wide$label)
+for (i in 1:nrow(ts_abund_wide)) {
+  ts <- ts_abund_wide[i, 3:ncol(ts_abund_wide)] %>% 
+    as.numeric() %>% 
+    na.omit() %>% 
+    as.numeric()
+  temp_list <- lst(ts)
+  ts_abund_list <- c(ts_abund_list, temp_list)
+}
+names(ts_abund_list) <- labels
+```
+
+# DTW
+
+Set up multithreading for dtwclust():
+
+https://cran.r-project.org/web/packages/dtwclust/vignettes/parallelization-considerations.html
+
+```{r}
+# Set up multithreading with most of the server's processors (80 of 96)
+## Restart R to change number of threads
+library("parallel")
+library("doParallel")
+
+workers <- makeCluster(48)
+
+invisible(clusterEvalQ(workers, {
+    library(dtwclust)
+    RcppParallel::setThreadOptions(1L)
+}))
+
+require(doParallel)
+registerDoParallel(workers)
+```
+
+All pairwise comparisons:
+
+Using defaults, cannot place lowerbounds due to differing time series lengths.
+
+```{r}
+library("dtwclust")
+
+dtw_dist <- proxy::dist(ts_abund_list, method = "dtw_basic")
+```
+
+# Principle components
+
+```{r}
+dtw_pc <- prcomp(dtw_dist)
+head(summary(dtw_pc)$importance[3,])
+plot(summary(dtw_pc)$importance[3,])
+```
+
+First two components describe 65% of variation, not bad.
+
+Visualize:
+
+```{r}
+dtw_pc_df <- dtw_pc$x %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var="label")
+
+dtw_pc_df %>% 
+  ggplot(aes(x=PC1, y=PC2)) +
+  geom_point() + 
+  theme_test()
+```
+
+# Hierarchical clustering
+
+Agglomerative:
+
+```{r}
+library("factoextra")
+library("cluster")
+
+# Single, complete, and average
+agnes_sing <- agnes(dtw_dist, metric="euclidean", method = "single")
+agnes_compl <- agnes(dtw_dist, metric="euclidean", method = "complete")
+agnes_avg <- agnes(dtw_dist, metric="euclidean", method = "average")
+
+agnes_sing$ac
+agnes_compl$ac
+agnes_avg$ac
+```
+
+Complete linkage provides the best agglomerative coefficient.
+
+Devisive:
+
+```{r}
+diana_euc <- diana(dtw_dist)
+diana_euc$dc
+```
+
+Agglomerative hierarchical clustering with complete linkage seems to give best cluster cohesion.
+
+# PIN: I should try to visualize the dendrogram
+
+# Cluster number
+
+Scree and height gap plots:
+
+Graphing functions: https://tomytjandra.github.io/blogs/r/time-series/clustering/2020/11/04/time-series-hierarchical-clustering.html#Determine-optimal-clusters
+
+```{r}
+# Function
+scree_plot_hc <- function(hc, which.plots = 1) {
+  df <-
+    data.frame(k = 1:length(hc$height),
+               h = rev(sort(hc$height))) %>% 
+    mutate(gap = abs(h - lag(h)))
+  
+  if (which.plots == 1) {
+    
+    p <- ggplot(df, aes(x = k, y = h)) +
+      geom_line(color = 'blue') +
+      geom_point(size = 0.75) +
+      labs(x = "Number of clusters k",
+           y = "Height",
+           title = "Scree Plot") +
+      theme_classic()
+    
+    print(p)
+    
+  } else if (which.plots == 2) {
+    
+    df %>% 
+      arrange(desc(gap)) %>% 
+      top_n(10) %>% 
+      ggplot(aes(x = reorder(k, -gap), y = gap)) +
+      geom_col() +
+      labs(x = "Number of clusters k",
+           y = "Height Gap",
+           title = "Largest Gap Method") +
+      theme_classic()
+    
+  }
+}
+```
+
+```{r}
+scree_plot_hc(agnes_compl, which.plots = 1)
+scree_plot_hc(agnes_compl, which.plots = 2)
+```
+
+There is a clear elbow but there are way too many clusters. Height gap plot seems to indicate that 4 clusters is ideal, and that is reflected in the scree plot as well.
+
+Silohuettes:
+
+Describes similarity to observation to its own cluster. Positive silhouette width is more similar, negative is less similar.
+
+```{r}
+# 4 clusterss
+hc_4 <- cutree(agnes_compl, k = 4)
+sil_4 <- silhouette(hc_4, dtw_dist)
+plot(sil_4, col=1:4, main="4 clusters")
+
+sil_4_df %>% 
+  mutate(cluster = as.factor(cluster)) %>% 
+  ggplot(aes(x=sil_width, y=cluster, color=cluster)) +
+  geom_jitter() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  theme_test()
+```
+
+Not great, must be lots of overlap between clusters?
+
+# Visualize clusters
+
+PC1 and PC2 with cluster color-coding:
+
+```{r}
+final_cluster4 <- cutree(as.hclust(agnes_compl), k = 4)
+table(final_cluster4)
+
+cluster_mapping4 <- rownames_to_column(as.data.frame(final_cluster4),
+                     var = "label") %>% 
+  rename(cluster = final_cluster4) %>% 
+  mutate(cluster = as.factor(cluster))
+
+dtw_pc_df %>% 
+  left_join(cluster_mapping4) %>% 
+  ggplot(aes(x=PC1, y=PC2, color=cluster)) +
+  geom_point() + 
+  theme_test()
+```
+
+That doesn't seem bad at all to me! Cluster 4 is a bit interesting because they overlap with clusters 1 and 2. Must be outliers in some way?
+
+Dendrogram:
+
+```{r}
+library("dendextend")
+dend_viz <- color_branches(as.hclust(agnes_compl), k = 4)
+plot(dend_viz, main="4 clusters", xaxt = "n")
+```
+
+# Barycenters
+
+How do i barycenter
+
+A matrix or data frame where each row is a time series, or a list where each element is a time series. Multivariate series should be provided as a list of matrices where time spans the rows and the variables span the columns of each matrix.
+
+```{r}
+ts_abund_dba <- ts_abund_wide %>% 
+  # bookmark
+
+x <- dba()
+```
+
