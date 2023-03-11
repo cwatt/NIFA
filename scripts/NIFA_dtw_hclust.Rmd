@@ -54,9 +54,6 @@ ts_abund_gr %>%
   group_by(ts) %>% 
   summarize(days = n()) %>% 
   ungroup() 
-
-
-
 ```
 
 Visualize:
@@ -270,8 +267,6 @@ diana_euc$dc
 
 Agglomerative hierarchical clustering with complete linkage seems to give best cluster cohesion.
 
-# PIN: I should try to visualize the dendrogram
-
 # Cluster number
 
 Scree and height gap plots:
@@ -330,6 +325,11 @@ Describes similarity to observation to its own cluster. Positive silhouette widt
 hc_4 <- cutree(agnes_compl, k = 4)
 sil_4 <- silhouette(hc_4, dtw_dist)
 plot(sil_4, col=1:4, main="4 clusters")
+sil_4_df <- data.frame(sil_4)
+
+# Average silohuette
+sil_4_df %>% 
+  summarize(mean(sil_width))
 
 sil_4_df %>% 
   mutate(cluster = as.factor(cluster)) %>% 
@@ -339,7 +339,7 @@ sil_4_df %>%
   theme_test()
 ```
 
-Not great, must be lots of overlap between clusters?
+Average silohuette width is very close to 0, must be lots of overlap between clusters?
 
 # Visualize clusters
 
@@ -359,28 +359,237 @@ dtw_pc_df %>%
   ggplot(aes(x=PC1, y=PC2, color=cluster)) +
   geom_point() + 
   theme_test()
+
+# How many observations in each cluster?
+dtw_pc_df %>% 
+  left_join(cluster_mapping4) %>% 
+  group_by(cluster) %>% 
+  summarize(total=n())
 ```
 
-That doesn't seem bad at all to me! Cluster 4 is a bit interesting because they overlap with clusters 1 and 2. Must be outliers in some way?
+That doesn't seem bad to me! Cluster 4 is a bit interesting because overlaps with clusters 1 and 2. Must be outliers in some way?
 
 Dendrogram:
 
 ```{r}
 library("dendextend")
 dend_viz <- color_branches(as.hclust(agnes_compl), k = 4)
-plot(dend_viz, main="4 clusters", xaxt = "n")
+plot(dend_viz, main="4 clusters", xaxt="n")
 ```
 
 # Barycenters
 
-How do i barycenter
-
-A matrix or data frame where each row is a time series, or a list where each element is a time series. Multivariate series should be provided as a list of matrices where time spans the rows and the variables span the columns of each matrix.
+"A matrix or data frame where each row is a time series, or a list where each element is a time series. Multivariate series should be provided as a list of matrices where time spans the rows and the variables span the columns of each matrix."
 
 ```{r}
+# Add cluster mapping info
 ts_abund_dba <- ts_abund_wide %>% 
-  # bookmark
+  left_join(cluster_mapping4) %>% 
+  select(everything(), -ts, -label)
 
-x <- dba()
+# Convert to lists
+for (c in c(1, 2, 3, 4)) { # each cluster
+  ts_abund_sub <- filter(ts_abund_dba, cluster==c) %>% 
+    select(-cluster)
+  x <- list()
+   # create object for cluster
+  for (i in 1:nrow(ts_abund_sub)) { # each time series
+    ts <- ts_abund_sub[i,] %>% 
+      as.numeric() %>% 
+      na.omit() %>% 
+      as.numeric()
+    temp_list <- lst(ts)
+    x <- c(x, temp_list)
+  }
+  assign(paste0("ts_abund_dba", c), x)
+}
+
+# Calculate barycenter for each cluster
+barycenter1 <- DBA(ts_abund_dba1)
+barycenter2 <- DBA(ts_abund_dba2)
+barycenter3 <- DBA(ts_abund_dba3)
+barycenter4 <- DBA(ts_abund_dba4)
+
+# Reformat barycenters into dataframe
+barycenter1_df <- data.frame(c(barycenter1, rep(NA, 30-length(barycenter1)))) %>% 
+  rename(cluster1="c.barycenter1..rep.NA..30...length.barycenter1...")
+barycenter2_df <- data.frame(c(barycenter2, rep(NA, 30-length(barycenter2)))) %>% 
+  rename(cluster2="c.barycenter2..rep.NA..30...length.barycenter2...")
+barycenter3_df <- data.frame(c(barycenter3, rep(NA, 30-length(barycenter3)))) %>% 
+  rename(cluster3="c.barycenter3..rep.NA..30...length.barycenter3...")
+barycenter4_df <- data.frame(c(barycenter4, rep(NA, 30-length(barycenter4)))) %>% 
+  rename(cluster4="c.barycenter4..rep.NA..30...length.barycenter4...")
+
+barycenters_df <- bind_cols(barycenter1_df, barycenter2_df) %>% 
+  bind_cols(barycenter3_df) %>% 
+  bind_cols(barycenter4_df) %>% 
+  rownames_to_column(var="tp") %>% 
+  pivot_longer(-tp, names_to="cluster", values_to="abund_norm") %>% 
+  mutate(cluster = as_factor(cluster),
+         tp = as.numeric(tp))
 ```
+
+Visualize:
+
+```{r}
+barycenters_df %>% 
+  ggplot(aes(x=tp, y=abund_norm, color=cluster)) + 
+  geom_point(size=2) +
+  geom_line(size=0.5) +
+  geom_smooth(method="loess", se=F, linetype=2) +
+  theme_test()
+```
+
+Cluster 2 is weird. Why so short?
+
+# Exploration
+
+Construct dataframe with clustered time series information.
+
+```{r}
+# Import paprica estimates and taxonomy
+pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+tax <- read_tsv("../data_amplicon/NIFA2/final/NIFA2.taxonomy-final.tsv")
+
+# Time series data
+abund_clust <- ts_abund_gr %>% 
+  left_join(cluster_mapping4) %>% 
+  mutate(Soil=if_else(grepl("Ag", label), "Ag", "Meadow"),
+         Replicate=gsub("[a-z]+([1-3])_(.+)", "\\1", label, ignore.case=TRUE),
+         ASV=gsub("[a-z]+([1-3])_(.+)", "\\2", label, ignore.case=TRUE)) %>% 
+  select(label, Soil, Replicate, ASV, ts, day, cluster, abund:abund_norm) %>% 
+  left_join(pap) %>% 
+  left_join(tax)
+  
+# Growth estimates
+growth_clust <- growth %>% 
+  left_join(pap) %>% 
+  left_join(tax) %>% 
+  left_join(cluster_mapping4)
+```
+
+## Time series by cluster
+
+```{r}
+# Cluster 1
+abund_clust %>% 
+  filter(cluster==1) %>% 
+  ggplot(aes(x=day, y=abund_ln)) +
+  geom_point(alpha=0.5) +
+  geom_line(aes(group=label), alpha=0.5) +
+  labs(title="Cluster 1 time series") +
+  theme_test()
+
+# Cluster 2
+abund_clust %>% 
+  filter(cluster==2) %>% 
+  ggplot(aes(x=day, y=abund_ln)) +
+  geom_point(alpha=0.5) +
+  geom_line(aes(group=label), alpha=0.5) +
+  labs(title="Cluster 2 time series") +
+  theme_test()
+
+# Cluster 3
+abund_clust %>% 
+  filter(cluster==3) %>% 
+  ggplot(aes(x=day, y=abund_ln)) +
+  geom_point(alpha=0.5) +
+  geom_line(aes(group=label), alpha=0.5) +
+  labs(title="Cluster 3 time series") +
+  theme_test()
+
+# Cluster 4
+abund_clust %>% 
+  filter(cluster==4) %>% 
+  ggplot(aes(x=day, y=abund_ln)) +
+  geom_point(alpha=0.5) +
+  geom_line(aes(group=label), alpha=0.5) +
+  labs(title="Cluster 4 time series") +
+  theme_test()
+```
+
+Randomly draw 25 from each cluster:
+
+```{r}
+rand10 <- cluster_mapping4 %>% 
+  group_by(cluster) %>% 
+  slice_sample(n=10)
+
+# Cluster 1
+abund_clust %>% 
+  filter(cluster==1) %>% 
+  semi_join(rand10) %>% 
+  ggplot(aes(x=day, y=abund_ln)) +
+  geom_point(alpha=0.5) +
+  geom_line(aes(group=label), alpha=0.5) +
+  labs(title="Cluster 1 time series") +
+  theme_test()
+
+# Cluster 2
+abund_clust %>% 
+  filter(cluster==2) %>% 
+  semi_join(rand10) %>% 
+  ggplot(aes(x=day, y=abund_ln)) +
+  geom_point(alpha=0.5) +
+  geom_line(aes(group=label), alpha=0.5) +
+  labs(title="Cluster 2 time series") +
+  theme_test()
+
+# Cluster 3
+abund_clust %>% 
+  filter(cluster==3) %>% 
+  semi_join(rand10) %>% 
+  ggplot(aes(x=day, y=abund_ln)) +
+  geom_point(alpha=0.5) +
+  geom_line(aes(group=label), alpha=0.5) +
+  labs(title="Cluster 3 time series") +
+  theme_test()
+
+# Cluster 4
+abund_clust %>% 
+  filter(cluster==4) %>% 
+  semi_join(rand10) %>% 
+  ggplot(aes(x=day, y=abund_ln)) +
+  geom_point(alpha=0.5) +
+  geom_line(aes(group=label), alpha=0.5) +
+  labs(title="Cluster 4 time series") +
+  theme_test()
+
+
+```
+
+## ASVs by cluster
+
+Do ASVs present in multiple replicates ussually occur in the same cluster, or different cluster?
+
+I would expect them to be more likely in the same cluster, if growth dynamics are governed by deterministic, trait-based factors. Stochasticity between replicates makes this difficult to assess.
+
+# BOOKMARK
+```{r}
+asv_occ <- growth_clust %>% 
+  group_by(ASV, Soil) %>% 
+  summarize(occurence=n())
+
+clust_occ <- cluster_mapping4 %>% 
+  mutate(ASV=gsub("[a-z]+([1-3])_(.+)", "\\2", label, ignore.case=TRUE),
+         Soil=if_else(grepl("Ag", label), "Ag", "Meadow")) %>% 
+  left_join(asv_occ) %>% 
+  select(label, ASV, Soil, cluster, occurence)
+
+clust_occ %>% 
+  filter()
+```
+
+## Cluster phylogenetic signal
+
+Taxonomy-based.
+
+## Growth metrics by cluster
+
+k, lag, change abundance, 16S copy num., genome size
+
+## Soils by cluster
+
+Are clusters more frequent in one soil over another?
+
 
