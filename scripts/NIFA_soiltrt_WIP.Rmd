@@ -39,8 +39,6 @@ abund <- readRDS("../data_intermediate/NIFA_norm_prepped.rds")
 meta <- read_tsv("../NIFA_metadata.tsv")
 ```
 
-# WIP
-
 Reformat data: 
 
 ```{r}
@@ -83,7 +81,7 @@ growth_death %>%
   theme_test()
 ```
 
-Community-level:
+# Community-level
 
 ```{r}
 # Average across ASVs per replicate
@@ -109,9 +107,16 @@ growth_death_com %>%
   geom_jitter(width=0.1) +
   facet_wrap(~variable, scales="free") +
   theme_test()
+
+growth_death_com %>% 
+  pivot_longer(cols = -c(Soil, Replicate, type), names_to = "variable", values_to = "value") %>% 
+  ggplot(aes(x=type, y=log(abs(value)), color=Soil)) +
+  geom_jitter(width=0.1) +
+  facet_wrap(~variable, scales="free") +
+  theme_test()
 ```
 
-ASV level:
+# ASV level
 
 ```{r}
 # Average across replicates per ASV
@@ -138,13 +143,34 @@ growth_death_asv %>%
   facet_wrap(~variable, scales="free") +
   theme_test()
 
-growth_death_asv %>% 
+growth_death_asv %>%
   pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
   ggplot(aes(x=type, y=log(abs(value)), color=Soil)) +
   geom_boxplot() +
   facet_wrap(~variable, scales="free") +
+  labs(title="Growth - log") +
   theme_test()
 
+# Death traits
+growth_death_asv %>% 
+  filter(type=="death") %>% 
+  pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
+  ggplot(aes(x=type, y=abs(value), color=Soil)) +
+  geom_boxplot() +
+  facet_wrap(~variable, scales="free") +
+  labs(title="Growth") +
+  theme_test()
+
+growth_death_asv %>% 
+  filter(type=="death") %>% 
+  pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
+  ggplot(aes(x=type, y=log(abs(value)), color=Soil)) +
+  geom_boxplot() +
+  facet_wrap(~variable, scales="free") +
+  labs(title="Growth - log") +
+  theme_test()
+
+# Growth trait density
 growth_death_asv %>% 
   pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
   filter(type=="growth") %>% 
@@ -163,6 +189,7 @@ growth_death_asv %>%
   labs(title="Growth - log") +
   theme_test()
 
+# Death trait density
 growth_death_asv %>% 
   pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
   filter(type=="death") %>% 
@@ -181,5 +208,4 @@ growth_death_asv %>%
   labs(title="Death - log") +
   theme_test()
 ```
-
 

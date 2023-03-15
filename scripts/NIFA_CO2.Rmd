@@ -25,9 +25,9 @@ Note: Files exported from Shimadzu PostRun Analysis software as ASCII. In GCMS P
 
 This script is built to run on data that has been stored in a project directory containing a "data" directory with sub-directories for each time point that .txt files with the GCMS output for each sample.
 
-Why is this so slow??? Would it be faster in python?
+SO SLOW
 
-```{r}
+```{r, eval=FALSE}
 # List of directories containing data files
 dir <- list.dirs(path="../data_gcms/data", full.names=TRUE, recursive=FALSE)
 
@@ -70,6 +70,19 @@ for (i in names(files)) { # for each list of files (refers to a directory)
   }
 }
 ```
+
+Save so I don't have to do that again:
+
+```{r, eval=FALSE}
+saveRDS(area_df, file="../data_intermediate/NIFA_rawgcms.rds")
+```
+
+Import:
+
+```{r}
+area_df <-readRDS("../data_intermediate/NIFA_rawgcms.rds")
+```
+
 
 # Reformat
 
@@ -406,7 +419,7 @@ sample_ppm %>%
   theme_test()
 ```
 
-Calculate mg CO2/C:
+## Calculate mg CO2 & C
 
 ```{r}
 # Ideal gas law: n=(P*V)/(R*temp)
@@ -416,7 +429,7 @@ temp <- 296.48 # K, 74F in lab throughout experiment
 V_m <- 0.1 # L, headspace of 100 mL serum bottle with soil, meadow
 V_ag <- 0.104 # L, headspace of 100 mL serum bottle with soil, ag
 mwCO2 <- 44.01 # molecular weight (g/mol) of CO2
-P <- 1 #atm, assumes 1 atm in ucosms during sampling
+P <- 1 # atm, assumes 1 atm in ucosms during sampling
 
 # mol CO2 if headspace were 100% CO2
 mol_ag100 <- P*V_ag/(R*temp)
@@ -448,7 +461,30 @@ Save processed data:
 saveRDS(sample_mg, "../data_intermediate/NIFA_repiration.rds")
 ```
 
-# Total respiration
+## Respiration rate
+
+```{r}
+# Time (days) elapsed per time point
+time_steps <- data.frame(time_step = c(0, rep(1, 11), rep(2, 8), 3),
+                         Day = sort(unique(sample_mg$Day)))
+
+# Calculate
+sample_mg <- sample_mg %>% 
+  left_join(time_steps) %>% 
+  filter(Day != 0) %>% 
+  mutate(resp_rate_c = mg_c / time_step,
+         resp_rate_co2 = mg_co2 / time_step)
+
+# Visualize
+sample_mg %>% 
+  ggplot(aes(x=Day, y=resp_rate_c, color=Measurement)) +
+  geom_point() +
+  facet_wrap(Litter~Soil) +
+  labs(title="Respiration rate (mg C)") +
+  theme_test()
+```
+
+## Total respiration
 
 ```{r}
 # Sum across time points
@@ -464,8 +500,46 @@ resp_total %>%
   filter(molecule=="c") %>% 
   ggplot(aes(x=Soil, y=mg, color=Measurement)) +
   geom_point() +
+  geom_vline(xintercept = 0.1) +
   facet_wrap(~Litter) +
+  labs(title="Total C respiration") +
   theme_test()
+```
+
+# PIN: what is up with the low meadow oultier in the litter treatment? calculation mistake?
+
+Statistics:
+
+```{r}
+# Litter
+## mz 44
+littermz44_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz44" & molecule=="c"))
+hist(resid(littermz44_lm)) # non-normal w/ or w/o log transform
+plot(predict(littermz44_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
+## Switch to welch t-test
+t.test(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz44" & molecule=="c"), var.equal=FALSE)
+
+## mz 45
+littermz45_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz45" & molecule=="c"))
+hist(resid(littermz45_lm)) # non-normal w/ or w/o log transform
+plot(predict(littermz45_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
+## Switch to welch t-test
+t.test(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz45" & molecule=="c"), var.equal=FALSE)
+
+# No litter
+## mz 44
+nolittermz44_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="no litter" & Measurement=="mz44" & molecule=="c"))
+hist(resid(nolittermz44_lm)) # non-normal w/ or w/o log transform
+plot(predict(nolittermz44_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
+## Switch to welch t-test
+t.test(mg ~ Soil, data=filter(resp_total, Litter=="no litter" & Measurement=="mz44" & molecule=="c"), var.equal=FALSE)
+
+## mz 45
+nolittermz45_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="no litter" & Measurement=="mz45" & molecule=="c"))
+hist(resid(nolittermz45_lm)) # non-normal w/ or w/o log transform
+plot(predict(nolittermz45_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
+## Switch to welch t-test
+t.test(mg ~ Soil, data=filter(resp_total, Litter=="no litter" & Measurement=="mz45" & molecule=="c"), var.equal=FALSE)
 ```
 
 # SCRAP

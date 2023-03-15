@@ -1,0 +1,55 @@
+---
+title: "Untitled"
+author: "Cassandra Wattenburger"
+date: "3/15/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+
+sessionInfo()
+```
+
+# Import data
+
+```{r}
+incorp <- readRDS("../mothur_cluster/fullcyc2_data/fullcyc2_l2fc_testoutput.rds")
+
+incorp
+```
+
+
+```{r}
+# Reformat
+incorp2 <- incorp %>% 
+  mutate(ecosystem = gsub(".substrate == '12C-Con' & day == '[0-9]+' & ecosystem == '([a-z]+)'.+", "\\1", .id), # separate out .id column info
+         day = gsub(".substrate == '12C-Con' & day == '([0-9]+)' .+", "\\1", .id),
+         substrate = gsub(".+substrate == '13C-([a-z]+)'.+", "\\1", .id, ignore.case=T),
+         substrate = case_when(substrate=="Pal" ~ "palmitic acid", # double check these with Sam!!!
+                               substrate=="Ami" ~ "amino acid",
+                               substrate=="Xyl" ~ "xylose",
+                               substrate=="Cel" ~ "cellulose",
+                               substrate=="Van" ~ "vanillin")) %>%
+  select(ecosystem, day, substrate, OTU, log2FoldChange, padj) %>% 
+  filter(ecosystem %in% c("meadow", "agriculture") & padj < 0.05 & log2FoldChange > 0) # filter relevant taxa
+  
+incorp2
+
+# List of incorporator OTUs
+incorp_otus <- select(incorp2, OTU)
+
+# Save list of incorporator OTUs
+write_tsv(incorp_otus, "../mothur_cluster/fullcyc2_data/incorporator_otus.txt")
+```
+
+

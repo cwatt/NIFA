@@ -314,20 +314,16 @@ scree_plot_hc(agnes_compl, which.plots = 1)
 scree_plot_hc(agnes_compl, which.plots = 2)
 ```
 
-There is a clear elbow but there are way too many clusters. Height gap plot seems to indicate that 4 clusters is ideal, and that is reflected in the scree plot as well.
-
 Silohuettes:
 
-Describes similarity to observation to its own cluster. Positive silhouette width is more similar, negative is less similar.
+Describes similarity of observation to its own cluster. Positive silhouette width is more similar, negative is less similar.
 
 ```{r}
-# 4 clusterss
+# 4 clusters
 hc_4 <- cutree(agnes_compl, k = 4)
 sil_4 <- silhouette(hc_4, dtw_dist)
-plot(sil_4, col=1:4, main="4 clusters")
 sil_4_df <- data.frame(sil_4)
 
-# Average silohuette
 sil_4_df %>% 
   summarize(mean(sil_width))
 
@@ -336,6 +332,39 @@ sil_4_df %>%
   ggplot(aes(x=sil_width, y=cluster, color=cluster)) +
   geom_jitter() +
   geom_vline(xintercept = 0, linetype = 2) +
+  labs(title="4 clusters")
+  theme_test()
+
+# 8 clusters
+hc_8 <- cutree(agnes_compl, k = 8)
+sil_8 <- silhouette(hc_8, dtw_dist)
+sil_8_df <- data.frame(sil_8)
+
+sil_8_df %>% 
+  summarize(mean(sil_width))
+
+sil_8_df %>% 
+  mutate(cluster = as.factor(cluster)) %>% 
+  ggplot(aes(x=sil_width, y=cluster, color=cluster)) +
+  geom_jitter() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  labs(title="8 clusters")
+  theme_test()
+  
+# 10 clusters
+hc_10 <- cutree(agnes_compl, k = 10)
+sil_10 <- silhouette(hc_10, dtw_dist)
+sil_10_df <- data.frame(sil_10)
+
+sil_10_df %>% 
+  summarize(mean(sil_width))
+
+sil_10_df %>% 
+  mutate(cluster = as.factor(cluster)) %>% 
+  ggplot(aes(x=sil_width, y=cluster, color=cluster)) +
+  geom_jitter() +
+  geom_vline(xintercept = 0, linetype = 2) +
+  labs(title="10 clusters")
   theme_test()
 ```
 
@@ -346,6 +375,7 @@ Average silohuette width is very close to 0, must be lots of overlap between clu
 PC1 and PC2 with cluster color-coding:
 
 ```{r}
+# 4 clusters
 final_cluster4 <- cutree(as.hclust(agnes_compl), k = 4)
 table(final_cluster4)
 
@@ -365,30 +395,89 @@ dtw_pc_df %>%
   left_join(cluster_mapping4) %>% 
   group_by(cluster) %>% 
   summarize(total=n())
+
+# 8 clusters
+final_cluster8 <- cutree(as.hclust(agnes_compl), k = 8)
+table(final_cluster8)
+
+cluster_mapping8 <- rownames_to_column(as.data.frame(final_cluster8),
+                     var = "label") %>% 
+  rename(cluster = final_cluster8) %>% 
+  mutate(cluster = as.factor(cluster))
+
+dtw_pc_df %>% 
+  left_join(cluster_mapping8) %>% 
+  ggplot(aes(x=PC1, y=PC2, color=cluster)) +
+  geom_point() + 
+  theme_test()
+
+# How many observations in each cluster?
+dtw_pc_df %>% 
+  left_join(cluster_mapping8) %>% 
+  group_by(cluster) %>% 
+  summarize(total=n())
+
+# 10 clusters
+final_cluster10 <- cutree(as.hclust(agnes_compl), k = 10)
+table(final_cluster10)
+
+cluster_mapping10 <- rownames_to_column(as.data.frame(final_cluster10),
+                     var = "label") %>% 
+  rename(cluster = final_cluster10) %>% 
+  mutate(cluster = as.factor(cluster))
+
+dtw_pc_df %>% 
+  left_join(cluster_mapping10) %>% 
+  ggplot(aes(x=PC1, y=PC2, color=cluster)) +
+  geom_point() + 
+  theme_test()
+
+# How many observations in each cluster?
+dtw_pc_df %>% 
+  left_join(cluster_mapping10) %>% 
+  group_by(cluster) %>% 
+  summarize(total=n())
 ```
 
-That doesn't seem bad to me! Cluster 4 is a bit interesting because overlaps with clusters 1 and 2. Must be outliers in some way?
+10 clusters results in a more even distribution of estimates and breaks up that one gigantic cluster more.
 
 Dendrogram:
 
 ```{r}
 library("dendextend")
-dend_viz <- color_branches(as.hclust(agnes_compl), k = 4)
-plot(dend_viz, main="4 clusters", xaxt="n")
+
+# Clusters on dendrograms
+dend_viz4 <- color_branches(as.hclust(agnes_compl), k = 4)
+dend_viz8 <- color_branches(as.hclust(agnes_compl), k = 8)
+dend_viz10 <- color_branches(as.hclust(agnes_compl), k = 10)
+
+# Visualize
+plot(dend_viz4)
+plot(dend_viz8)
+plot(dend_viz10)
 ```
 
 # Barycenters
 
-"A matrix or data frame where each row is a time series, or a list where each element is a time series. Multivariate series should be provided as a list of matrices where time spans the rows and the variables span the columns of each matrix."
+# PIN: not working well
 
-```{r}
-# Add cluster mapping info
-ts_abund_dba <- ts_abund_wide %>% 
-  left_join(cluster_mapping4) %>% 
-  select(everything(), -ts, -label)
+```{r, eval=FALSE, warning=FALSE}
+# Time series means
+ts_mean <- ts_abund_gr %>% 
+  group_by(label) %>% 
+  summarize(ts_mean = mean(abund_ln)) %>% 
+  ungroup()
+
+# Offset and add cluster info
+ts_abund_dba <- ts_abund_gr %>%
+  left_join(ts_mean) %>% 
+  mutate(abund_offset = abund_ln - ts_mean) %>% 
+  select(label, day, abund_offset) %>% 
+  pivot_wider(names_from=day, values_from=abund_offset) %>% 
+  left_join(cluster_mapping10)
 
 # Convert to lists
-for (c in c(1, 2, 3, 4)) { # each cluster
+for (c in c(1:10)) { # each cluster
   ts_abund_sub <- filter(ts_abund_dba, cluster==c) %>% 
     select(-cluster)
   x <- list()
@@ -405,191 +494,198 @@ for (c in c(1, 2, 3, 4)) { # each cluster
 }
 
 # Calculate barycenter for each cluster
-barycenter1 <- DBA(ts_abund_dba1)
-barycenter2 <- DBA(ts_abund_dba2)
-barycenter3 <- DBA(ts_abund_dba3)
-barycenter4 <- DBA(ts_abund_dba4)
+barycenter1 <- shape_extraction(ts_abund_dba1)
+barycenter2 <- shape_extraction(ts_abund_dba2)
+barycenter3 <- shape_extraction(ts_abund_dba3)
+barycenter4 <- shape_extraction(ts_abund_dba4)
+barycenter5 <- shape_extraction(ts_abund_dba5)
+barycenter6 <- shape_extraction(ts_abund_dba6)
+barycenter7 <- shape_extraction(ts_abund_dba7)
+barycenter8 <- shape_extraction(ts_abund_dba8)
+barycenter9 <- shape_extraction(ts_abund_dba9)
+barycenter10 <- shape_extraction(ts_abund_dba10)
 
 # Reformat barycenters into dataframe
-barycenter1_df <- data.frame(c(barycenter1, rep(NA, 30-length(barycenter1)))) %>% 
-  rename(cluster1="c.barycenter1..rep.NA..30...length.barycenter1...")
-barycenter2_df <- data.frame(c(barycenter2, rep(NA, 30-length(barycenter2)))) %>% 
-  rename(cluster2="c.barycenter2..rep.NA..30...length.barycenter2...")
-barycenter3_df <- data.frame(c(barycenter3, rep(NA, 30-length(barycenter3)))) %>% 
-  rename(cluster3="c.barycenter3..rep.NA..30...length.barycenter3...")
-barycenter4_df <- data.frame(c(barycenter4, rep(NA, 30-length(barycenter4)))) %>% 
-  rename(cluster4="c.barycenter4..rep.NA..30...length.barycenter4...")
-
-barycenters_df <- bind_cols(barycenter1_df, barycenter2_df) %>% 
-  bind_cols(barycenter3_df) %>% 
-  bind_cols(barycenter4_df) %>% 
+barycenters_df <- data.frame(cluster1 = c(barycenter1, rep(NA, 30-length(barycenter1))),
+                             cluster2 = c(barycenter2, rep(NA, 30-length(barycenter2))),
+                             cluster3 = c(barycenter3, rep(NA, 30-length(barycenter3))),
+                             cluster4 = c(barycenter4, rep(NA, 30-length(barycenter4))),
+                             cluster5 = c(barycenter5, rep(NA, 30-length(barycenter5))),
+                             cluster6 = c(barycenter6, rep(NA, 30-length(barycenter6))),
+                             cluster7 = c(barycenter7, rep(NA, 30-length(barycenter7))),
+                             cluster8 = c(barycenter8, rep(NA, 30-length(barycenter8))),
+                             cluster9 = c(barycenter9, rep(NA, 30-length(barycenter9))),
+                             cluster10 = c(barycenter10, rep(NA, 30-length(barycenter10)))) %>% 
   rownames_to_column(var="tp") %>% 
-  pivot_longer(-tp, names_to="cluster", values_to="abund_norm") %>% 
+  pivot_longer(-tp, names_to="cluster", values_to="abund_offset") %>% 
   mutate(cluster = as_factor(cluster),
-         tp = as.numeric(tp))
-```
+         tp = as.numeric(tp)) %>% 
+  na.omit()
 
-Visualize:
-
-```{r}
+# Visualize
 barycenters_df %>% 
-  ggplot(aes(x=tp, y=abund_norm, color=cluster)) + 
-  geom_point(size=2) +
-  geom_line(size=0.5) +
-  geom_smooth(method="loess", se=F, linetype=2) +
+  ggplot(aes(x=tp, y=abund_offset, color=cluster)) + 
+  geom_point() +
+  geom_line() +
+  facet_wrap(~cluster) +
   theme_test()
 ```
 
-Cluster 2 is weird. Why so short?
+# Clustered time series
 
-# Exploration
-
-Construct dataframe with clustered time series information.
+# NOTE: Currently set to 4
 
 ```{r}
-# Import paprica estimates and taxonomy
-pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
-tax <- read_tsv("../data_amplicon/NIFA2/final/NIFA2.taxonomy-final.tsv")
-
 # Time series data
 abund_clust <- ts_abund_gr %>% 
   left_join(cluster_mapping4) %>% 
   mutate(Soil=if_else(grepl("Ag", label), "Ag", "Meadow"),
          Replicate=gsub("[a-z]+([1-3])_(.+)", "\\1", label, ignore.case=TRUE),
          ASV=gsub("[a-z]+([1-3])_(.+)", "\\2", label, ignore.case=TRUE)) %>% 
-  select(label, Soil, Replicate, ASV, ts, day, cluster, abund:abund_norm) %>% 
-  left_join(pap) %>% 
-  left_join(tax)
+  select(label, Soil, Replicate, ASV, ts, day, cluster, abund:abund_norm)
   
 # Growth estimates
-growth_clust <- growth %>% 
-  left_join(pap) %>% 
-  left_join(tax) %>% 
+growth_clust <- growth %>%
   left_join(cluster_mapping4)
 ```
 
-## Time series by cluster
+Visualize:
 
 ```{r}
-# Cluster 1
-abund_clust %>% 
-  filter(cluster==1) %>% 
-  ggplot(aes(x=day, y=abund_ln)) +
-  geom_point(alpha=0.5) +
-  geom_line(aes(group=label), alpha=0.5) +
-  labs(title="Cluster 1 time series") +
-  theme_test()
-
-# Cluster 2
-abund_clust %>% 
-  filter(cluster==2) %>% 
-  ggplot(aes(x=day, y=abund_ln)) +
-  geom_point(alpha=0.5) +
-  geom_line(aes(group=label), alpha=0.5) +
-  labs(title="Cluster 2 time series") +
-  theme_test()
-
-# Cluster 3
-abund_clust %>% 
-  filter(cluster==3) %>% 
-  ggplot(aes(x=day, y=abund_ln)) +
-  geom_point(alpha=0.5) +
-  geom_line(aes(group=label), alpha=0.5) +
-  labs(title="Cluster 3 time series") +
-  theme_test()
-
-# Cluster 4
-abund_clust %>% 
-  filter(cluster==4) %>% 
-  ggplot(aes(x=day, y=abund_ln)) +
-  geom_point(alpha=0.5) +
-  geom_line(aes(group=label), alpha=0.5) +
-  labs(title="Cluster 4 time series") +
-  theme_test()
+for (c in c(1:4)) { # each cluster
+  title <- paste0("Cluster ", c)
+  p <- abund_clust %>% 
+    filter(cluster==c) %>% 
+    ggplot(aes(x=day, y=abund_ln)) +
+    geom_point(alpha=0.5) +
+    geom_line(aes(group=label), alpha=0.5) +
+    labs(title=title) +
+    theme_test() 
+    print(p)
+}
 ```
 
-Randomly draw 25 from each cluster:
+Randomly draw 10 from each cluster:
 
 ```{r}
 rand10 <- cluster_mapping4 %>% 
   group_by(cluster) %>% 
   slice_sample(n=10)
 
-# Cluster 1
+for (c in c(1:4)) { # each cluster
+  title <- paste0("Cluster ", c)
+  p <- abund_clust %>% 
+    semi_join(rand10) %>% 
+    filter(cluster==c) %>% 
+    ggplot(aes(x=day, y=abund_ln, color=label)) +
+    geom_point(alpha=0.5) +
+    geom_line(aes(group=label), alpha=0.5) +
+    labs(title=title) +
+    theme_test() +
+    theme(legend.position = "none")
+  print(p)
+}
+
+# Smoothed version
+for (c in c(1:4)) { # each cluster
+  title <- paste0("Cluster ", c)
+  p <- abund_clust %>% 
+    semi_join(rand10) %>% 
+    filter(cluster==c) %>% 
+    ggplot(aes(x=day, y=abund_ln, color=label)) +
+    geom_smooth(method="loess", se=F) +
+    labs(title=title) +
+    theme_test() +
+    theme(legend.position = "none")
+  print(p)
+}
+
+# Simplify further
 abund_clust %>% 
-  filter(cluster==1) %>% 
-  semi_join(rand10) %>% 
-  ggplot(aes(x=day, y=abund_ln)) +
-  geom_point(alpha=0.5) +
-  geom_line(aes(group=label), alpha=0.5) +
-  labs(title="Cluster 1 time series") +
-  theme_test()
+  ggplot(aes(x=day, y=abund_ln, color=cluster)) +
+  geom_smooth(method="loess", se=F) +
+  labs(title="All clusters, each summmarized into one smoothed spline") +
+  theme_test() +
+  theme(legend.position = "none")
 
-# Cluster 2
 abund_clust %>% 
-  filter(cluster==2) %>% 
-  semi_join(rand10) %>% 
-  ggplot(aes(x=day, y=abund_ln)) +
-  geom_point(alpha=0.5) +
-  geom_line(aes(group=label), alpha=0.5) +
-  labs(title="Cluster 2 time series") +
-  theme_test()
-
-# Cluster 3
-abund_clust %>% 
-  filter(cluster==3) %>% 
-  semi_join(rand10) %>% 
-  ggplot(aes(x=day, y=abund_ln)) +
-  geom_point(alpha=0.5) +
-  geom_line(aes(group=label), alpha=0.5) +
-  labs(title="Cluster 3 time series") +
-  theme_test()
-
-# Cluster 4
-abund_clust %>% 
-  filter(cluster==4) %>% 
-  semi_join(rand10) %>% 
-  ggplot(aes(x=day, y=abund_ln)) +
-  geom_point(alpha=0.5) +
-  geom_line(aes(group=label), alpha=0.5) +
-  labs(title="Cluster 4 time series") +
-  theme_test()
-
-
+  ggplot(aes(x=day, y=abund_ln, color=cluster)) +
+  geom_smooth(method="loess", se=F) +
+  labs(title="All clusters, each summmarized into one smoothed spline") +
+  facet_wrap(~cluster) +
+  theme_test() +
+  theme(legend.position = "none")
 ```
 
-## ASVs by cluster
+## Offset
 
-Do ASVs present in multiple replicates ussually occur in the same cluster, or different cluster?
-
-I would expect them to be more likely in the same cluster, if growth dynamics are governed by deterministic, trait-based factors. Stochasticity between replicates makes this difficult to assess.
-
-# BOOKMARK
 ```{r}
-asv_occ <- growth_clust %>% 
-  group_by(ASV, Soil) %>% 
-  summarize(occurence=n())
+# Calculate time series means
+ts_mean <- abund_clust %>% 
+  group_by(label) %>% 
+  summarize(ts_mean = mean(abund_ln)) %>% 
+  ungroup()
 
-clust_occ <- cluster_mapping4 %>% 
-  mutate(ASV=gsub("[a-z]+([1-3])_(.+)", "\\2", label, ignore.case=TRUE),
-         Soil=if_else(grepl("Ag", label), "Ag", "Meadow")) %>% 
-  left_join(asv_occ) %>% 
-  select(label, ASV, Soil, cluster, occurence)
+# Offset
+abund_offset <- abund_clust %>% 
+  left_join(ts_mean) %>% 
+  mutate(abund_offset = abund_ln - ts_mean)
 
-clust_occ %>% 
-  filter()
+# Visualize
+
+for (c in c(1:4)) { # each cluster
+  title <- paste0("Cluster ", c)
+  p <- abund_offset %>% 
+    semi_join(rand10) %>% 
+    filter(cluster==c) %>% 
+    ggplot(aes(x=day, y=abund_offset, color=label)) +
+    geom_point(alpha=0.5) +
+    geom_line(aes(group=label), alpha=0.5) +
+    labs(title=title) +
+    theme_test() +
+    theme(legend.position = "none")
+  print(p)
+}
+
+for (c in c(1:4)) { # each cluster
+  title <- paste0("Cluster ", c, " examples")
+  p <- abund_offset %>% 
+    semi_join(rand10) %>% 
+    filter(cluster==c) %>% 
+    ggplot(aes(x=day, y=abund_offset, color=label)) +
+    geom_smooth(method="loess", se=F) +
+    labs(title=title) +
+    theme_test() +
+    theme(legend.position = "none")
+  print(p)
+}
+
+# Simplify further
+abund_offset %>% 
+  semi_join(rand10) %>% 
+  ggplot(aes(x=day, y=abund_offset, color=cluster)) +
+  geom_smooth(method="loess", se=F) +
+  labs(title="All clusters, each summmarized into one smoothed spline") +
+  theme_test() +
+  theme(legend.position = "none")
+
+abund_offset %>% 
+  semi_join(rand10) %>% 
+  ggplot(aes(x=day, y=abund_offset, color=cluster)) +
+  geom_smooth(method="loess", se=F) +
+  labs(title="All clusters, each summmarized into one smoothed spline") +
+  facet_wrap(~cluster) +
+  theme_test() +
+  theme(legend.position = "none")
 ```
 
-## Cluster phylogenetic signal
+# Save data
 
-Taxonomy-based.
+Script is getting long and crowded so moving exploratory analyses into a new file.
 
-## Growth metrics by cluster
-
-k, lag, change abundance, 16S copy num., genome size
-
-## Soils by cluster
-
-Are clusters more frequent in one soil over another?
+```{r, eval=FALSE}
+# Cluster mapping
+saveRDS(cluster_mapping10, file="../data_intermediate/NIFA_clustmap_dtwhclust.Rmd")
+```
 
 

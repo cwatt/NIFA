@@ -1,0 +1,310 @@
+---
+title: "NIFA - dynamic time warping w/hierarchical clustering exploratory analysis"
+author: "Cassandra Wattenburger"
+date: "3/13/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+
+sessionInfo()
+```
+
+# Import and reformat data
+
+```{r}
+# Normalized abundances (all taxa, not just growing taxa)
+ts_abund <- readRDS("../data_intermediate/NIFA_norm_prepped.rds")
+
+# Growth estimates
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+
+# Paprica predictions
+pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+
+# Taxonomy
+tax <- read_tsv("../data_amplicon/NIFA2/final/NIFA2.taxonomy-final.tsv")
+
+# Cluster mapping
+clust_map <- readRDS("../data_intermediate/NIFA_clustmap_dtwhclust.Rmd")
+```
+
+Reformat and combine data:
+
+```{r}
+# Time series
+abund_clust <- ts_abund %>% 
+  right_join(clust_map) %>% # map to cluster
+  mutate(Soil=if_else(grepl("Ag", label), "Ag", "Meadow"),
+         Replicate=gsub("[a-z]+([1-3])_(.+)", "\\1", label, ignore.case=TRUE),
+         ASV=gsub("[a-z]+([1-3])_(.+)", "\\2", label, ignore.case=TRUE),
+         abund_ln = log(norm_abund)) %>% 
+  left_join(pap) %>% # add paprica predictions
+  left_join(tax) %>% # add taxonomy info
+  select(label:Day, cluster, ASV, Domain:Genus, abund=norm_abund, abund_ln)
+
+abund_clust
+  
+# Growth estimates
+growth_clust <- growth %>% 
+  left_join(pap) %>% # add paprica predictions
+  left_join(tax) %>% # add taxonomy info
+  left_join(clust_map) # map to clusters
+
+growth_clust
+```
+
+# ASV cluster stability
+
+Do ASVs present in multiple replicates usually occur in the same cluster, or different clusters?
+
+I would expect them to be in the same cluster, if growth dynamics are governed by deterministic, trait-based factors. Stochasticity may make this difficult to assess.
+
+```{r}
+# Filter out ASVs that only occur once in each soil
+asvsingle_rm <- growth_clust %>% 
+  group_by(ASV, Soil) %>% 
+  summarize(total = n()) %>% 
+  ungroup() %>% 
+  filter(total > 1) %>% 
+  select(ASV, Soil)
+  
+# Mode function (why doesn't base R have this?????)
+## https://www.statology.org/mode-in-r/
+find_mode <- function(x) {
+  u <- unique(x)
+  tab <- tabulate(match(x, u))
+  u[tab == max(tab)]
+}
+
+# Find ASV cluster mode (this will be assumed as the "correct" cluster for the ASV because it occurs most often)
+clust_mode <- growth_clust %>% 
+  semi_join(asvsingle_rm) %>% 
+  mutate(cluster = as.numeric(cluster)) %>%
+  group_by(ASV, Soil) %>% 
+  summarize(cluster_mode = find_mode(cluster))
+
+growth_asvstab <- growth_clust %>% 
+  inner_join(clust_mode) %>% 
+  mutate(cluster = as.numeric(cluster),
+         cluster_place = if_else((cluster/cluster_mode == 1), "expected", "deviant"),
+         cluster = as_factor(cluster))
+
+# Visualize
+growth_asvstab %>% 
+  ggplot(aes(x=cluster_place, y=cluster, color=cluster)) +
+  geom_jitter() +
+  facet_wrap(~Soil) +
+  labs(title="Cluster placement based on most frequent placement of ASV") +
+  theme_test()
+
+growth_asvstab %>% 
+  group_by(Soil, cluster, cluster_place) %>% 
+  summarize(total=n()) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=cluster, y=total, fill=cluster_place)) +
+  geom_col() +
+  facet_wrap(~Soil) +
+  theme_test()
+```
+
+Looks like ASVs are most often clustered together. Meadow cluster 3 is particularly unstable for some reason. Cluster 4 consisted of singletons so are not represented, but makes sense because those were mainly rarer, low abundance taxa.
+
+Brainstorm: How does having only 2 occurences in different cluster impact this? Assume that one placement is "correct" and the other is deviant, so probably doesn't make much of a difference.
+
+### PIN: Are deviants more likely to be on the edge of a cluster where there is overlap?
+
+### PIN: permutational test? null: taxa are just as likely to be placed in a deviant cluster as an expected cluster
+
+# Phylogenetic signal
+
+Do clusters predictably contain related taxa?
+
+## By taxonomy
+
+Phylum:
+
+```{r}
+growth_clust %>% 
+  ggplot(aes(y=cluster, x=Phylum, color=cluster)) +
+  geom_jitter(alpha=0.7, width=0.25) +
+  facet_wrap(~Soil, nrow=2) +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.major.x = element_line(linetype=2, color="gray"))
+```
+
+Notes:
+* Cosmopolitan phyla are most often spread among clusters 1-3
+* Fibrobacterota only occurs in cluster 2 in both soils
+* Bdellovibrionota is rare but also occurs only in cluster 2 in both soils
+
+Genus by Phylum
+
+```{r}
+# Visualize
+for (p in unique(as.character(growth_clust$Phylum))) {
+  p_sub <- filter(growth_clust, Phylum==p)
+  pf_plot <- p_sub %>% 
+    ggplot(aes(y=cluster, x=Family, color=cluster)) +
+    geom_jitter(width=0.25, alpha=0.7) +
+    facet_wrap(~Soil, nrow=2) +
+    labs(title=paste0(p)) +
+    theme_test() +
+    theme(axis.text.x = element_text(angle=45, hjust=1),
+        panel.grid.major.x = element_line(linetype=2, color="gray"))
+  print(pf_plot)
+}
+  
+```
+
+Doesn't seem to be a lot of conservation based on taxonomy.
+
+Calculate relative frequency of each phylum in each cluster.
+
+```{r}
+# Calculate total estimates per phylum in each luster
+phy_total <- growth_clust %>% 
+  group_by(Soil, Phylum) %>% 
+  summarize(total_phy = n()) %>% 
+  ungroup()
+
+phyclust_total <- growth_clust %>% 
+  group_by(Soil, Phylum, cluster) %>% 
+  summarize(total_clust = n()) %>% 
+  ungroup()
+
+# Calculate relative frequency
+phyclust_relfreq <- phyclust_total %>% 
+  left_join(phy_total) %>% 
+  mutate(rel_freq = total_clust/total_phy)
+
+phyclust_relfreq %>% 
+  ggplot(aes(x=Phylum, y=rel_freq, fill=cluster)) +
+  geom_col() +
+  facet_wrap(~Soil, nrow=2) +
+  labs(title="Relative frequency of phyla in each cluster") +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+# Soils by cluster
+
+Are clusters more frequent in one soil over another?
+
+Calculate cluster relative frequency in each soil:
+
+```{r}
+# troubleshoot
+soilclust_freq <- growth_clust %>% 
+  group_by(Soil, cluster, Replicate) %>% 
+  summarize(total_soilclust = n()) %>% 
+  ungroup()
+
+soil_freq <- growth_clust %>% 
+  group_by(Soil,) %>% 
+  summarize(total_soil = n())
+  
+soil_relfreq <- soilclust_freq %>% 
+  left_join(soil_freq) %>% 
+  mutate(rel_freq = total_soilclust/total_soil)
+  
+soil_relfreq
+
+# Visualize
+soil_relfreq %>% 
+  ggplot(aes(x=Replicate, y=rel_freq, fill=cluster)) +
+  geom_col() +
+  facet_wrap(~Soil) +
+  theme_test()
+
+soil_relfreq %>% 
+  ggplot(aes(x=Soil, y=rel_freq, color=cluster)) +
+  geom_jitter(width=0.1) +
+  theme_test()
+```
+
+Statistics:
+
+Excluding cluster 4 because it is very sparse.
+
+```{r}
+# Cluster 1
+relfreq1_lm <- lm(rel_freq ~ Soil, data=filter(soil_relfreq, cluster==1))
+hist(resid(relfreq1_lm))
+plot(predict(relfreq1_lm), resid(relfreq1_lm))
+anova(relfreq1_lm)
+
+# Cluster 2
+relfreq2_lm <- lm(rel_freq ~ Soil, data=filter(soil_relfreq, cluster==2))
+hist(resid(relfreq2_lm))
+plot(predict(relfreq2_lm), resid(relfreq2_lm))
+anova(relfreq2_lm)
+
+# Cluster 3
+relfreq3_lm <- lm(log(rel_freq) ~ Soil, data=filter(soil_relfreq, cluster==3))
+hist(resid(relfreq3_lm))
+plot(predict(relfreq3_lm), resid(relfreq3_lm)) # heteroskedastic w/or w/o log, switch to welch
+t.test(rel_freq ~ Soil, data=filter(soil_relfreq, cluster==3))
+```
+
+No significance.
+
+# Growth metrics by cluster
+
+k, lag, change abundance, 16S copy num., genome size
+
+## PIN: need to think carefully about replication or LMM?
+
+```{r}
+# k
+growth_clust %>% 
+  ggplot(aes(x=cluster, y=log(k))) +
+  geom_violin() +
+  facet_wrap(~Soil) +
+  geom_jitter(alpha=0.5) +
+  theme_test()
+
+# lag
+growth_clust %>% 
+  ggplot(aes(x=cluster, y=start_day)) +
+  geom_violin() +
+  geom_jitter(alpha=0.5) +
+  facet_wrap(~Soil) +
+  theme_test()
+
+# change abund
+growth_clust %>% 
+  mutate(change_abund_corr = change_abund/n16S) %>% 
+  ggplot(aes(x=cluster, y=log(change_abund_corr))) +
+  geom_violin() +
+  geom_jitter(alpha=0.5) +
+  facet_wrap(~Soil) +
+  theme_test()
+
+# 16S
+growth_clust %>% 
+  ggplot(aes(x=cluster, y=log(n16S))) +
+  geom_violin() +
+  geom_jitter(alpha=0.5) +
+  theme_test()
+
+# genome size
+growth_clust %>% 
+  ggplot(aes(x=cluster, y=genome_size)) +
+  geom_violin() +
+  geom_jitter(alpha=0.5) +
+  facet_wrap(~Soil) +
+  theme_test()
+```
+
