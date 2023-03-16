@@ -116,7 +116,13 @@ growth_death_com %>%
   theme_test()
 ```
 
-# ASV level
+## Statistics
+# WIP
+```{r}
+# lm for all abunds, growth and death, ~soil
+```
+
+# ASV-level
 
 ```{r}
 # Average across replicates per ASV
@@ -207,5 +213,101 @@ growth_death_asv %>%
   facet_wrap(~variable, scales="free") +
   labs(title="Death - log") +
   theme_test()
+```
+
+## Statistics
+# WIP
+```{r}
+# lmm, soil vs soil
+```
+
+# Gaussian mixture modeling
+
+```{r}
+library(mclust)
+set.seed(3)
+```
+
+## Growth k
+
+```{r}
+# Agricultural
+
+# Visualize
+ggplot(data=growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="growth",],
+       aes(log(k))) +
+  geom_density() +
+  theme_test()
+
+# Subset data
+k_grag <- growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="growth",]$k
+
+# Fit univariate gaussian mixture models
+agk_mclust <- densityMclust(log(k_grag))
+summary(agk_mclust)
+plot(agk_mclust$BIC)
+agk_mclust$parameters
+```
+
+```{r}
+# Meadow
+
+# Visualize
+ggplot(data=growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="growth",],
+       aes(log(k))) +
+  geom_density() +
+  theme_test()
+
+# Subset data
+k_grmd <- growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="growth",]$k
+
+# Fit univariate gaussian mixture models
+agk_mclust <- densityMclust(log(k_grmd))
+summary(agk_mclust)
+plot(agk_mclust$BIC)
+agk_mclust$parameters
+```
+
+## Death k
+
+Fit univariate gaussian mixture models:
+
+# PIN: this seems weird?? look into later
+```{r}
+# Agricultural
+
+# Visualize
+ggplot(data=growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="death",],
+       aes(log(k))) +
+  geom_density() +
+  theme_test()
+
+# Subset data
+k_deag <- growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="death",]$k
+
+# Fit univariate gaussian mixture models
+agd_mclust <- densityMclust(log(k_deag))
+summary(agd_mclust)
+plot(agd_mclust$BIC)
+agd_mclust$parameters
+```
+
+```{r}
+# Meadow
+
+# Visualize
+ggplot(data=growth_death_asv[growth_death_asv$Soil=="Meadow" & growth_death_asv$type=="death",],
+       aes(log(k))) +
+  geom_density() +
+  theme_test()
+
+# Subset data
+k_demd <- growth_death_asv[growth_death_asv$Soil=="Meadow" & growth_death_asv$type=="death",]$k
+
+# Fit univariate gaussian mixture models
+mdd_mclust <- densityMclust(log(abs(k_demd)))
+summary(mdd_mclust)
+plot(mdd_mclust$BIC)
+mdd_mclust$parameters
 ```
 

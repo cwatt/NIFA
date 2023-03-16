@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "FullCyc2 incorporators"
 author: "Cassandra Wattenburger"
 date: "3/15/2023"
 output: html_document
@@ -23,7 +23,7 @@ sessionInfo()
 # Import data
 
 ```{r}
-incorp <- readRDS("../mothur_cluster/fullcyc2_data/fullcyc2_l2fc_testoutput.rds")
+incorp <- readRDS("../mothur_cluster/fullcyc2_l2fc_testoutput.rds")
 
 incorp
 ```
@@ -40,16 +40,35 @@ incorp2 <- incorp %>%
                                substrate=="Xyl" ~ "xylose",
                                substrate=="Cel" ~ "cellulose",
                                substrate=="Van" ~ "vanillin")) %>%
-  select(ecosystem, day, substrate, OTU, log2FoldChange, padj) %>% 
-  filter(ecosystem %in% c("meadow", "agriculture") & padj < 0.05 & log2FoldChange > 0) # filter relevant taxa
+  select(OTU, ecosystem, day, substrate, log2FoldChange, padj) %>% 
+  filter(padj < 0.05) # filter incorporators
   
 incorp2
+```
 
-# List of incorporator OTUs
-incorp_otus <- select(incorp2, OTU)
+Save:
 
-# Save list of incorporator OTUs
-write_tsv(incorp_otus, "../mothur_cluster/fullcyc2_data/incorporator_otus.txt")
+```{r, eval=FALSE}
+saveRDS(incorp2, file="../data_intermediate/fullcyc2_incorp.rds")
 ```
 
 
+
+Create list of incorporator OTUs:
+
+```{r, eval=FALSE}
+incorp_otus <- select(incorp2, OTU) %>% 
+  unique()
+
+write_tsv(incorp_otus, "../mothur_cluster/incorp_otus.txt")
+```
+
+Create list of growing taxa from NIFA experiment:
+
+```{r}
+growth_asvs <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds") %>% 
+  select(ASV) %>% 
+  unique()
+
+write_tsv(growth_asvs, "../mothur_cluster/growth_asvs.txt")
+```
