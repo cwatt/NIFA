@@ -208,12 +208,12 @@ dim(death_estimates)
 ```
 
 ```{r, eval=FALSE}
-saveRDS(death_estimates, "../data_intermediate/NIFA_dests_raw_ind.Rmd")
+saveRDS(death_estimates, "../data_intermediate/NIFA_dests_raw_ind.rds")
 ```
 
 ```{r}
 # Load raw estimates
-death_estimates <- readRDS("../data_intermediate/NIFA_dests_raw_ind.Rmd")
+death_estimates <- readRDS("../data_intermediate/NIFA_dests_raw_ind.rds")
 ```
 
 ### Quality filter
@@ -676,14 +676,14 @@ death_tidy %>%
   summarize(total_mean = mean(total),
             total_sd = sd(total))
 
-# Average g per soil
+# Unique ASVs with estimates per soil
 death_tidy %>% 
   group_by(Soil, Replicate) %>% 
-  summarize(h_mean = mean(h),
-            h_sd = sd(h)) %>% 
-  ggplot(aes(x=Soil, y=h_mean)) + 
-  geom_point() +
-  theme_test()
+  summarize(asvs = n()) %>% 
+  ungroup() %>% 
+  group_by(Soil) %>% 
+  summarize(asvs_mean = mean(asvs),
+            asvs_sd = sd(asvs))
 
 # Phyla esitmates
 death_tidy %>% 
@@ -695,6 +695,34 @@ death_tidy %>%
   summarize(total_mean = mean(total),
             total_sd = sd(total)) %>% 
   arrange(Soil, -total_mean)
+
+# Average halving time per soil
+death_tidy %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(h = mean(h)) %>% 
+  ungroup() %>% 
+  group_by(Soil) %>% 
+  summarize(h_mean = mean(h),
+            h_sd = sd(h))
+
+death_tidy %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(h_mean = mean(h),
+            h_sd = sd(h)) %>% 
+  ggplot(aes(x=Soil, y=h_mean)) + 
+  geom_point() +
+  theme_test()
+
+# Average lag time
+death_tidy %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(lag = mean(start_day)) %>% 
+  ungroup() %>% 
+  group_by(Soil) %>% 
+  summarize(lag_mean = mean(lag),
+            lag_sd = sd(lag))
+
+# Can't do change in abundance yet because need to correct for 16S copy num
 ```
 
 # Plot death estimates

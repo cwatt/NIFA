@@ -2,7 +2,7 @@
 title: "SFA2 - prerocessing"
 author: "Cassandra Wattenburger"
 date: "9/15/2021"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -142,6 +142,11 @@ Rarefy to 8770, lose no samples but negative controls.
 set.seed(3)
 
 physeq_rare <- rarefy_even_depth(physeq3, sample.size=8770)
+
+# Ag
+subset_samples(physeq_rare, Soil=="Ag")
+# Meadow
+subset_samples(physeq_rare, Soil=="Meadow")
 ```
 
 # Save preprocessed count data

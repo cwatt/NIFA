@@ -2,7 +2,7 @@
 title: "NIFA - paprica"
 author: "Cassandra Wattenburger"
 date: "1/13/2023"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -96,29 +96,33 @@ sd(pap_all$confidence, na.rm=TRUE)
 
 # Impute missing values
 
-Paprica sometimes misses OTUs due to the sparsity of the databases. 
-Averaging the n16S of the other representatives of the genus or family.
+Paprica sometimes misses OTUs due to the sparsity of the databases. Averaging the n16S of the other representatives of the genus or family.
 
-# BOOKMARK
-Need to save result
+NOTE: Came to my attention that Fibrobacteraceae and Patescibacteria have no representatives in the predictions. Instead, going to use average of closest members in rrnDB as next best option.
+
+See: 
+https://rrndb.umms.med.umich.edu/genomes/taxonomy?query=Fibrobacteraceae&button=Search+taxonomy&name_type=13
+https://rrndb.umms.med.umich.edu/genomes/taxonomy?query=Patescibacteria&button=Search+taxonomy&name_type=13
+
 
 ```{r}
 pap_imp <- data.frame()
 for (a in pap_all$ASV) { # Check each ASV...
   imp_n16S <- NULL; this_row <- NULL
   data_sub <- filter(pap_all, ASV==a)
-  if (is.na(data_sub$n16S)) { # if no 16S copy number prediction...
-    genus <- as.character(data_sub$Genus)
-    family <- as.character(data_sub$Family)
-    order <- as.character(data_sub$Order)
-    class <- as.character(data_sub$Class)
-    phylum <- as.character(data_sub$Phylum)
-    data_gen <- filter(pap_all, Genus==genus)
-    data_fam <- filter(pap_all, Family==family)
-    data_order <- filter(pap_all, Order==order)
-    data_class <- filter(pap_all, Class==class)
-    data_phy <- filter(pap_all, Phylum==Phylum)
-    
+  # taxonomix info
+  genus <- as.character(data_sub$Genus)
+  family <- as.character(data_sub$Family)
+  order <- as.character(data_sub$Order)
+  class <- as.character(data_sub$Class)
+  phylum <- as.character(data_sub$Phylum)
+  data_gen <- filter(pap_all, Genus==genus)
+  data_fam <- filter(pap_all, Family==family)
+  data_order <- filter(pap_all, Order==order)
+  data_class <- filter(pap_all, Class==class)
+  data_phy <- filter(pap_all, Phylum==Phylum)
+  
+  if (is.na(data_sub$n16S) & family!="Fibrobacteraceae" & phylum!="Patescibacteria") { # if no 16S copy number prediction...
     # Impute (average n16S of closest relatives, at least 2 members)
     if (nrow(na.omit(data_gen)) >= 2) {
       imp_n16S <- mean(data_gen$n16S, na.rm=TRUE)
@@ -146,6 +150,16 @@ for (a in pap_all$ASV) { # Check each ASV...
       pap_imp <- bind_rows(pap_imp, this_row)
     }
   }
+  else if (is.na(data_sub$n16S) & family=="Fibrobacteraceae") { # Impute Fibrobacteraceae
+    imp_n16S <- 3
+    this_row <- bind_cols(ASV=a, n16S_imp=imp_n16S)
+    pap_imp <- bind_rows(pap_imp, this_row)
+  } 
+  else if (is.na(data_sub$n16S) & phylum=="Patescibacteria") { # Impute Patescibacteria
+    imp_n16S <- 1
+    this_row <- bind_cols(ASV=a, n16S_imp=imp_n16S)
+    pap_imp <- bind_rows(pap_imp, this_row)
+  } 
   else {
     this_row <- bind_cols(ASV=a, n16S_imp=data_sub$n16S)
     pap_imp <- bind_rows(pap_imp, this_row)
@@ -158,7 +172,7 @@ pap_tidy <- pap_all %>%
   mutate(n16S = if_else(is.na(n16S), n16S_imp, n16S)) %>% 
   select(ASV, n16S, genome_size, npaths_actual, nec_actual)
 
-pap_tidy
+pap_tidy # where is 1d033fea10c5623a9a2f7a109d65b8a3 (Patescibacteria)? it's in pap_all with NAs, this loop is excluding?
 ```
 
 # Save files
@@ -166,5 +180,4 @@ pap_tidy
 ```{r, eval=FALSE}
 saveRDS(pap_tidy, "../data_intermediate/NIFA_paprica_ests.rds")
 ```
-
 

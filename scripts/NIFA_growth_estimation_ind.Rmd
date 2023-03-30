@@ -221,12 +221,12 @@ dim(growth_estimates)
 ```
 
 ```{r, eval=FALSE}
-saveRDS(growth_estimates, "../data_intermediate/NIFA_grests_raw_ind.Rmd")
+saveRDS(growth_estimates, "../data_intermediate/NIFA_grests_raw_ind.rds")
 ```
 
 ```{r}
 # Load raw estimates
-growth_estimates <- readRDS("../data_intermediate/NIFA_grests_raw_ind.Rmd")
+growth_estimates <- readRDS("../data_intermediate/NIFA_grests_raw_ind.rds")
 ```
 
 ### Quality filter
@@ -821,14 +821,14 @@ growth_tidy %>%
   summarize(total_mean = mean(total),
             total_sd = sd(total))
 
-# Average g per soil
+# Unique ASVs with estimates per soil
 growth_tidy %>% 
   group_by(Soil, Replicate) %>% 
-  summarize(g_mean = mean(g),
-            g_sd = sd(g)) %>% 
-  ggplot(aes(x=Soil, y=g_mean)) + 
-  geom_point() +
-  theme_test()
+  summarize(asvs = n()) %>% 
+  ungroup() %>% 
+  group_by(Soil) %>% 
+  summarize(asvs_mean = mean(asvs),
+            asvs_sd = sd(asvs))
 
 # Phyla esitmates
 growth_tidy %>% 
@@ -840,6 +840,34 @@ growth_tidy %>%
   summarize(total_mean = mean(total),
             total_sd = sd(total)) %>% 
   arrange(Soil, -total_mean)
+
+# Average generation time per soil
+growth_tidy %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(g = mean(g)) %>% 
+  ungroup() %>% 
+  group_by(Soil) %>% 
+  summarize(g_mean = mean(g),
+            g_sd = sd(g))
+
+growth_tidy %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(g_mean = mean(g),
+            g_sd = sd(g)) %>% 
+  ggplot(aes(x=Soil, y=g_mean)) + 
+  geom_point() +
+  theme_test()
+
+# Average lag time
+growth_tidy %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(lag = mean(start_day)) %>% 
+  ungroup() %>% 
+  group_by(Soil) %>% 
+  summarize(lag_mean = mean(lag),
+            lag_sd = sd(lag))
+
+# Can't do change in abundance yet because need to correct for 16S copy num
 ```
 
 # Plot growth estimates
