@@ -1,8 +1,8 @@
 ---
-title: "NIFA CO2 analysis"
+title: "NIFA CO2 preprocess"
 author: "Cassandra Wattenburger"
 date: "5/23/2022"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -226,6 +226,7 @@ Remove non-detects
 area_labs <- area_stdimp %>% 
   mutate(label = paste0(Sample, Soil, Measurement, Litter, Date))
 
+# Drop non-detects
 drop_labs <- c("190Meadowmz45litter052322", "185Agmz45litter061222", "186Agmz44litter053122", "186Agmz45litter053122")
 
 area_drop <- filter(area_labs, !(label %in% drop_labs))
@@ -233,7 +234,7 @@ area_drop <- filter(area_labs, !(label %in% drop_labs))
 
 Impute lost samples on 05/26/22 via neighbor averaging
 * Most samples on 05/26/22 (GCMS auto-injector failed and headspace lost)
-
+# TROUBLESHOOT
 ```{r}
 # Samples that were measured
 area_drop %>% 
@@ -245,6 +246,7 @@ area_drop %>%
 sams_lost <- c(187:190, 192, 193, 195)
 
 # Calculate imputations
+tps <- read_csv("../headspace_tps.csv")
 imp_sams <- area_drop %>% 
   filter(Microcosm %in% sams_lost & (Date=="052522" | Date=="052722")) %>% 
   group_by(Sample, Measurement) %>% 
@@ -252,8 +254,8 @@ imp_sams <- area_drop %>%
   ungroup() %>% 
   mutate(Microcosm = as.numeric(Sample),
          Litter = if_else(Microcosm %in% 185:190, "litter", "no litter"),
-         Soil = if_else(Microcosm %in% c(185:186, 191:193), "Ag", "Meadow")) %>% 
-  add_column(Date="052622", TP=16, Type="sample")
+         Soil = if_else(Microcosm %in% c(185:187, 191:193), "Ag", "Meadow")) %>% 
+  add_column(Date="052622", TP=16, Type="sample", Day=9)
 
 # Impute into dataframe
 area_samimp <- area_drop %>% 
@@ -376,35 +378,86 @@ amb_df <- area_prep %>%
 Visualize:
 
 ```{r}
-# Against standards
-bind_rows(std_df, amb_df) %>%
-  filter(Measurement == "mz44") %>% 
-  ggplot(aes(x=ppm, y=Area, color=Type)) +
-  geom_point() +
-  facet_wrap(~Day) +
-  theme_test()
+# # Against standards
+# bind_rows(std_df, amb_df) %>%
+#   filter(Measurement == "mz44") %>% 
+#   ggplot(aes(x=ppm, y=Area, color=Type)) +
+#   geom_point() +
+#   facet_wrap(~Day) +
+#   theme_test()
 
-# alone
+# mz44
 amb_df %>% 
   filter(Measurement=="mz44") %>% 
   ggplot(aes(x=Day, y=Area)) +
   geom_point() +
+  geom_text(aes(label=Sample)) +
+  geom_smooth(method="lm") +
+  geom_line(aes(group=Date)) +
+  theme_test()
+
+# mz45
+amb_df %>% 
+  filter(Measurement=="mz45") %>% 
+  ggplot(aes(x=Day, y=Area)) +
+  geom_point() +
+  geom_text(aes(label=Sample)) +
   geom_smooth(method="lm") +
   geom_line(aes(group=Date)) +
   theme_test()
 ```
 
-Atmospheric samples are very low, as expected. Ambient 2 is elevated, likely due to slight carry over from std 6, also expected.
+Atmospheric samples are very low, as expected. Ambient 2 is elevated, likely due to slight carry over from std 6, also expected. Two drop outs. Going to use linear model of this trend to compute how much ambient CO2 to remove from each sample.
+
+```{r}
+# Linear model
+# mz44
+amb44_lm <- lm(Area ~ Day, data=filter(amb_df, Measurement=="mz44"))
+amb44_int <- amb44_lm$coefficients[1] # intercept
+amb44_slope <- amb44_lm$coefficients[2] # slope
+
+# mz45
+amb45_lm <- lm(Area ~ Day, data=filter(amb_df, Measurement=="mz45"))
+amb45_int <- amb45_lm$coefficients[1] # intercept
+amb45_slope <- amb45_lm$coefficients[2] # slope
+
+# Impute
+amb_day <- amb_df %>% 
+  select(Day) %>% 
+  unique() %>%
+  arrange(Day)
+
+amb44_imp <- predict(amb44_lm, newdata=amb_day) %>% 
+  as_tibble_col(column_name = "amb_imp") %>% 
+  add_column(Day = amb_day$Day, Measurement="mz44")
+
+amb45_imp <- predict(amb45_lm, newdata=amb_day) %>% 
+  as_tibble_col(column_name = "amb_imp") %>% 
+  add_column(Day = amb_day$Day, Measurement="mz45")
+
+# Combine
+amb_imp <- bind_rows(amb44_imp, amb45_imp) %>%
+  select(Measurement, Day, amb_imp)
+```
 
 # Samples
+
+Subtract ambient CO2:
+
+```{r}
+sample_ambimp <- sample_df %>%  # TROUBLESHOOT CREATES NAs
+  left_join(amb_imp) %>% 
+  mutate(area_minamb = Area - amb_imp, # subtract ambient from total
+         area_minamb = if_else(area_minamb < 0, 0, area_minamb)) # correct if below 0 (day 0 and no litter samples)
+```
 
 Convert sample areas into ppm:
 
 ```{r}
-sample_ppm <- sample_df %>% 
+sample_ppm <- sample_ambimp %>% 
   left_join(std_cals, by="Date") %>%
   select(everything(), -adjR2, -pval) %>% 
-  mutate(ppm = (Area - intercept)/slope, # convert area to ppm based on curves
+  mutate(ppm = (area_minamb - intercept)/slope, # convert area to ppm based on curves
          ppm = if_else(ppm < 0, 0, ppm)) # Replace negative values with 0s
 ```
 
@@ -419,7 +472,7 @@ sample_ppm %>%
   theme_test()
 ```
 
-## Calculate mg CO2 & C
+## Calculate mg
 
 ```{r}
 # Ideal gas law: n=(P*V)/(R*temp)
@@ -428,7 +481,8 @@ R <- 0.082057338 # universal gas constant, (L*atm)/(mol*K)
 temp <- 296.48 # K, 74F in lab throughout experiment
 V_m <- 0.1 # L, headspace of 100 mL serum bottle with soil, meadow
 V_ag <- 0.104 # L, headspace of 100 mL serum bottle with soil, ag
-mwCO2 <- 44.01 # molecular weight (g/mol) of CO2
+mwCO244 <- 44.01 # molecular weight (g/mol) of 12CO2
+mwCO245 <- 45.01 # molecular weight (g/mol) of 13CO2
 P <- 1 # atm, assumes 1 atm in ucosms during sampling
 
 # mol CO2 if headspace were 100% CO2
@@ -436,20 +490,32 @@ mol_ag100 <- P*V_ag/(R*temp)
 mol_m100 <- P*V_m/(R*temp)
 
 # mg CO2 if headspace were 100% CO2
-mg_ag100 <- mol_ag100*mwCO2*1000
-mg_m100 <- mol_m100*mwCO2*1000
+mg_ag10044 <- mol_ag100*mwCO244*1000
+mg_ag10045 <- mol_ag100*mwCO245*1000
+mg_m10044 <- mol_m100*mwCO244*1000
+mg_m10045 <- mol_m100*mwCO245*1000
 
 # Convert ppm to mass
 sample_mg <- sample_ppm %>% 
-  mutate(mg_co2 = if_else(Soil=="Ag", mg_ag100*(ppm*10^-6), mg_m100*(ppm*10^-6)),
-         mg_c = mg_co2*0.273) %>% 
+  mutate(mg_co2 = case_when((Soil=="Ag" & Measurement=="mz44") ~ mg_ag10044*(ppm*10^-6),
+                           (Soil=="Meadow" & Measurement=="mz44") ~ mg_m10044*(ppm*10^-6),
+                           (Soil=="Ag" & Measurement=="mz45") ~ mg_ag10045*(ppm*10^-6),
+                           (Soil=="Meadow" & Measurement=="mz45") ~ mg_m10045*(ppm*10^-6)),
+         mg_c = if_else(Measurement=="mz44", mg_co2*(12/mwCO244), mg_co2*(13/mwCO245))) %>% 
   select(Microcosm, Soil, Litter, Day, Measurement, mg_co2, mg_c)
 ```
 
 Visualize:
+
 ```{r}
 sample_mg %>% 
   ggplot(aes(x=Day, y=mg_co2, color=Measurement)) +
+  geom_point() +
+  facet_wrap(Litter~Soil) +
+  theme_test()
+
+sample_mg %>% 
+  ggplot(aes(x=Day, y=mg_c, color=Measurement)) +
   geom_point() +
   facet_wrap(Litter~Soil) +
   theme_test()
@@ -460,110 +526,5 @@ Save processed data:
 ```{r, eval=FALSE}
 saveRDS(sample_mg, "../data_intermediate/NIFA_repiration.rds")
 ```
-
-## Respiration rate
-
-```{r}
-# Time (days) elapsed per time point
-time_steps <- data.frame(time_step = c(0, rep(1, 11), rep(2, 8), 3),
-                         Day = sort(unique(sample_mg$Day)))
-
-# Calculate
-sample_mg <- sample_mg %>% 
-  left_join(time_steps) %>% 
-  filter(Day != 0) %>% 
-  mutate(resp_rate_c = mg_c / time_step,
-         resp_rate_co2 = mg_co2 / time_step)
-
-# Visualize
-sample_mg %>% 
-  ggplot(aes(x=Day, y=resp_rate_c, color=Measurement)) +
-  geom_point() +
-  facet_wrap(Litter~Soil) +
-  labs(title="Respiration rate (mg C)") +
-  theme_test()
-```
-
-## Total respiration
-
-```{r}
-# Sum across time points
-resp_total <- sample_mg %>% 
-  pivot_longer(!Microcosm:Measurement, names_to="molecule", values_to="mg") %>% 
-  mutate(molecule = if_else(grepl("co2", molecule), "co2", "c")) %>% 
-  group_by(Microcosm, Soil, Litter, Measurement, molecule) %>% # sum over time
-  summarize(mg = sum(mg)) %>% 
-  ungroup() 
-
-# Visualize
-resp_total %>% 
-  filter(molecule=="c") %>% 
-  ggplot(aes(x=Soil, y=mg, color=Measurement)) +
-  geom_point() +
-  geom_vline(xintercept = 0.1) +
-  facet_wrap(~Litter) +
-  labs(title="Total C respiration") +
-  theme_test()
-```
-
-# PIN: what is up with the low meadow oultier in the litter treatment? calculation mistake?
-
-Statistics:
-
-```{r}
-# Litter
-## mz 44
-littermz44_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz44" & molecule=="c"))
-hist(resid(littermz44_lm)) # non-normal w/ or w/o log transform
-plot(predict(littermz44_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
-## Switch to welch t-test
-t.test(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz44" & molecule=="c"), var.equal=FALSE)
-
-## mz 45
-littermz45_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz45" & molecule=="c"))
-hist(resid(littermz45_lm)) # non-normal w/ or w/o log transform
-plot(predict(littermz45_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
-## Switch to welch t-test
-t.test(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz45" & molecule=="c"), var.equal=FALSE)
-
-# No litter
-## mz 44
-nolittermz44_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="no litter" & Measurement=="mz44" & molecule=="c"))
-hist(resid(nolittermz44_lm)) # non-normal w/ or w/o log transform
-plot(predict(nolittermz44_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
-## Switch to welch t-test
-t.test(mg ~ Soil, data=filter(resp_total, Litter=="no litter" & Measurement=="mz44" & molecule=="c"), var.equal=FALSE)
-
-## mz 45
-nolittermz45_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="no litter" & Measurement=="mz45" & molecule=="c"))
-hist(resid(nolittermz45_lm)) # non-normal w/ or w/o log transform
-plot(predict(nolittermz45_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
-## Switch to welch t-test
-t.test(mg ~ Soil, data=filter(resp_total, Litter=="no litter" & Measurement=="mz45" & molecule=="c"), var.equal=FALSE)
-```
-
-# SCRAP
-
-Test for autocorrelation in time series:
-
-```{r}
-ts_190M13CO2 <- sample_mg %>% 
-  filter(Microcosm==190 & isotope=="labelled" & molecule=="CO2" & Soil=="Meadow") %>% # isolate Meadow 13CO2 time series
-  filter(Date!="052322") %>% # remove drop out time point for autocorrelation test
-  select(mg) %>% # convert into ts object type
-  as.ts() 
-
-ts_186Ag13CO2 <- sample_mg %>% 
-  filter(Microcosm==186 & isotope=="labelled" & molecule=="CO2" & Soil=="Ag") %>% # isolate Meadow 13CO2 time series
-  filter(Date!="052322") %>% # remove drop out time point for autocorrelation test
-  select(mg) %>% # convert into ts object type
-  as.ts()
-  
-# Autocorrelation
-pacf(ts_190M13CO2)
-pacf(ts_186Ag13CO2)
-```
-
-Could this be used to test for oscillation in bacterial abundance data?
 
 

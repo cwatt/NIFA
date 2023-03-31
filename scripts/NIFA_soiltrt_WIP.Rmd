@@ -206,7 +206,7 @@ growth_soilphytots %>%
   ggplot(aes(x=reorder(Phylum, -relabund), y=relabund, fill=Soil)) +
   geom_col(color="black", position = "dodge") +
   labs(y="Relative proportion", title="Proportion of dying ASVs from each phyla per soil") +
-  scale_fill_manual(values=palette_bw4) +
+  scale_fill_manual(values=palette_bw2) +
   theme_test() +
   theme(axis.title.x = element_blank(),
         axis.text.x = element_text(hjust=1, angle=45),
@@ -314,27 +314,6 @@ growth_death %>%
 Visualize:
 
 ```{r}
-# k
-growth_death %>% 
-  ggplot(aes(x=Soil, y=log(abs(k)), color=type)) +
-  geom_boxplot() +
-  theme_test()
-
-# lag
-growth_death %>% 
-  ggplot(aes(x=Soil, y=start_day, color=type)) +
-  geom_boxplot() +
-  theme_test()
-
-# change abundance
-growth_death %>% 
-  ggplot(aes(x=Soil, y=log(abs(change_abund_corr)), color=type)) +
-  geom_boxplot() +
-  #geom_hline(yintercept = 0, linetype=2, color="gray") +
-  theme_test()
-```
-# BOOKMARK
-```{r}
 # Average across ASVs per replicate
 growth_death_com <- growth_death %>% 
   group_by(Soil, Replicate, type) %>% 
@@ -365,7 +344,11 @@ growth_death_com %>%
   geom_jitter(width=0.1) +
   facet_wrap(~variable, scales="free") +
   theme_test()
+```
 
+Figure:
+
+```{r}
 # Figure
 palette_bw2 <- c("black", "white")
 growth_death_com %>% 
@@ -389,7 +372,7 @@ growth_death_com %>%
 ```
 
 ## Statistics
-# PIN: multiple test correction?
+
 Growth:
 
 ```{r}
@@ -460,7 +443,11 @@ growth_death_asv <- growth_death %>%
             npaths_actual = mean(npaths_actual, na.rm=TRUE),
             nec_actual = mean(nec_actual, na.rm=TRUE)) %>% 
   ungroup()
+```
 
+Visualize:
+
+```{r}
 # Visualize
 growth_death_asv %>% 
   pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
@@ -535,10 +522,56 @@ growth_death_asv %>%
   theme_test()
 ```
 
+Figure:
+
+```{r}
+# Growth
+palette_bw2 <- c("darkgrey", "black")
+growth_death_asv %>% 
+  filter(type=="growth") %>% 
+  select(Soil:type, g, start_day, start_abund=start_abund_corr, end_abund=end_abund_corr, change_abund=change_abund_corr, n16S) %>% 
+  pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
+  mutate(variable = factor(variable, levels=c("start_day", "g", "n16S", "start_abund", "end_abund", "change_abund"))) %>%
+  ggplot(aes(log(abs(value)), color=Soil)) +
+  geom_density() +
+  facet_wrap(~variable, scales="free") +
+  scale_color_manual(values=palette_bw2) +
+  labs(title="Growth") +
+  theme_test() +
+  theme(axis.text = element_text(size=10, color="black"),
+      axis.title = element_text(size=12),
+      legend.text = element_text(size=10),
+      legend.title = element_text(size=10),
+      panel.border = element_rect(color="black"),
+      strip.text = element_text(size = 10),
+      strip.background = element_blank())
+
+# Death
+palette_bw2 <- c("darkgrey", "black")
+growth_death_asv %>% 
+  filter(type=="death") %>% 
+  select(Soil:type, g, start_day, start_abund=start_abund_corr, end_abund=end_abund_corr, change_abund=change_abund_corr, n16S) %>% 
+  pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
+  mutate(variable = factor(variable, levels=c("start_day", "g", "n16S", "start_abund", "end_abund", "change_abund"))) %>%
+  ggplot(aes(log(abs(value)), color=Soil)) +
+  geom_density() +
+  facet_wrap(~variable, scales="free") +
+  scale_color_manual(values=palette_bw2) +
+  labs(title="Death") +
+  theme_test() +
+  theme(axis.text = element_text(size=10, color="black"),
+      axis.title = element_text(size=12),
+      legend.text = element_text(size=10),
+      legend.title = element_text(size=10),
+      panel.border = element_rect(color="black"),
+      strip.text = element_text(size = 10),
+      strip.background = element_blank())
+```
+
 ## Statistics
 
 Growth:
-
+# BOOKMARK
 ```{r}
 # NOTE: I don't need to average asvs, can use unaveraged data with lmer
 library(lmerTest)

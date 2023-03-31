@@ -1,0 +1,161 @@
+---
+title: "NIFA CO2 analysis"
+author: "Cassandra Wattenburger"
+date: "3/31/2023"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+```{r}
+library(tidyverse)
+
+sessionInfo()
+
+rm(list=ls())
+```
+
+# Import data
+
+```{r}
+resp <- readRDS("../data_intermediate/NIFA_repiration.rds")
+```
+
+# Respiration rate
+
+```{r}
+# Time (days) elapsed per time point
+time_steps <- data.frame(time_step = c(0, rep(1, 11), rep(2, 8), 3),
+                         Day = sort(unique(resp$Day)))
+
+# Calculate respiration rate mg/days
+resp_rate <- resp %>% 
+  left_join(time_steps) %>% 
+  filter(Day != 0) %>% 
+  mutate(resp_rate_c = mg_c / time_step,
+         resp_rate_co2 = mg_co2 / time_step)
+
+# Visualize
+resp_rate %>% 
+  ggplot(aes(x=Day, y=resp_rate_c, color=Measurement)) +
+  geom_point() +
+  facet_wrap(Litter~Soil) +
+  labs(title="Respiration rate (mg C)") +
+  theme_test()
+```
+
+# Total respiration
+
+```{r}
+# Sum across time points # COERCES NAs in litter meadow why, sample 187 not summing???
+resp_total <- resp %>% 
+  pivot_longer(!Microcosm:Measurement, names_to="molecule", values_to="mg") %>% 
+  mutate(molecule = if_else(grepl("co2", molecule), "co2", "c")) %>% 
+  group_by(Microcosm, Soil, Litter, Measurement, molecule) %>% # sum over time
+  summarize(mg = sum(mg)) %>% 
+  ungroup() 
+
+# Visualize
+resp_total %>% 
+  filter(molecule=="c") %>% 
+  ggplot(aes(x=Soil, y=mg, color=Measurement)) +
+  geom_point() +
+  geom_text(aes(label=Microcosm), hjust=1.25, vjust=-0.5) +
+  geom_vline(xintercept = 0.1) +
+  facet_wrap(~Litter) +
+  labs(title="Total C respiration") +
+  theme_test()
+```
+
+# BOOKMARK Greff?
+
+Statistics:
+
+With sample 185 and 193 mz 44 (high outliers)
+
+```{r}
+# Litter
+## mz 44
+littermz44_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz44" & molecule=="c"))
+hist(resid(littermz44_lm)) # non-normal w/ or w/o log transform
+plot(predict(littermz44_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
+## Switch to welch t-test
+t.test(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz44" & molecule=="c"), var.equal=FALSE)
+
+## mz 45
+littermz45_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz45" & molecule=="c"))
+hist(resid(littermz45_lm)) # non-normal w/ or w/o log transform
+plot(predict(littermz45_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
+## Switch to welch t-test
+t.test(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz45" & molecule=="c"), var.equal=FALSE)
+
+# No litter
+## mz 44
+nolittermz44_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="no litter" & Measurement=="mz44" & molecule=="c"))
+hist(resid(nolittermz44_lm)) # non-normal w/ or w/o log transform
+plot(predict(nolittermz44_lm), resid(nolittermz44_lm)) # heteroskedastic, worse with log transform
+## Switch to welch t-test
+t.test(mg ~ Soil, data=filter(resp_total, Litter=="no litter" & Measurement=="mz44" & molecule=="c"), var.equal=FALSE)
+```
+
+Without sample 185 and 193 mz 44 (high outliers)
+
+```{r}
+resp_totalrm <- resp_total %>% 
+  mutate(label = paste0(Microcosm, Litter, Measurement)) %>% 
+  filter(label != "185littermz44") %>% 
+  filter(label != "193no littermz44")
+
+# Litter
+## mz 44
+littermz44_lm <- lm(mg ~ Soil, data=filter(resp_totalrm, Litter=="litter" & Measurement=="mz44" & molecule=="c"))
+hist(resid(littermz44_lm)) # non-normal w/ or w/o log transform
+plot(predict(littermz44_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
+## Switch to welch t-test
+t.test(mg ~ Soil, data=filter(resp_totalrm, Litter=="litter" & Measurement=="mz44" & molecule=="c"), var.equal=FALSE)
+
+## mz 45
+littermz45_lm <- lm(mg ~ Soil, data=filter(resp_totalrm, Litter=="litter" & Measurement=="mz45" & molecule=="c"))
+hist(resid(littermz45_lm)) # normal
+plot(predict(littermz45_lm), resid(littermz45_lm)) # heteroskedastic, worse with log transform
+## Switch to welch t-test
+t.test(mg ~ Soil, data=filter(resp_totalrm, Litter=="litter" & Measurement=="mz45" & molecule=="c"), var.equal=FALSE)
+
+# No litter
+## mz 44
+nolittermz44_lm <- lm(mg ~ Soil, data=filter(resp_totalrm, Litter=="no litter" & Measurement=="mz44" & molecule=="c"))
+hist(resid(nolittermz44_lm)) # non-normal w/ or w/o log transform
+plot(predict(nolittermz44_lm), resid(nolittermz44_lm)) # heteroskedastic, worse with log transform
+## Switch to welch t-test
+t.test(mg ~ Soil, data=filter(resp_totalrm, Litter=="no litter" & Measurement=="mz44" & molecule=="c"), var.equal=FALSE)
+```
+
+Not sure what to think. There seems to be a huge amount of variability in the agricultural soil, which decreases the power of the tests. What is more representative of the ag soil, the high outliers or the lower more consistent measurements?
+
+# SCRAP
+
+Test for autocorrelation in time series:
+
+```{r}
+ts_190M13CO2 <- sample_mg %>% 
+  filter(Microcosm==190 & isotope=="labelled" & molecule=="CO2" & Soil=="Meadow") %>% # isolate Meadow 13CO2 time series
+  filter(Date!="052322") %>% # remove drop out time point for autocorrelation test
+  select(mg) %>% # convert into ts object type
+  as.ts() 
+
+ts_186Ag13CO2 <- sample_mg %>% 
+  filter(Microcosm==186 & isotope=="labelled" & molecule=="CO2" & Soil=="Ag") %>% # isolate Meadow 13CO2 time series
+  filter(Date!="052322") %>% # remove drop out time point for autocorrelation test
+  select(mg) %>% # convert into ts object type
+  as.ts()
+  
+# Autocorrelation
+pacf(ts_190M13CO2)
+pacf(ts_186Ag13CO2)
+```
+
+Could this be used to test for oscillation in bacterial abundance data?
