@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "NIFA soil treatment analysis"
 author: "Cassandra Wattenburger"
 date: "2/17/2023"
 output: github_document
@@ -78,7 +78,7 @@ growth_death <- death2 %>%
 
 # Diversity overview
 
-Community diversity:
+## Alpha diversity
 
 After preprocessing, sparcity filtering, and rarefication.
 
@@ -216,6 +216,17 @@ growth_soilphytots %>%
         legend.title = element_text(size=10),
         panel.border = element_rect(color="black"))
 ```
+
+## Beta diversity
+
+```{r}
+# Import phyloseq object
+physeq <- readRDS("../data_intermediate/NIFA_physeq_rare.rds")
+
+# Distance
+phy_dist <- 
+```
+
 
 # Community-level
 

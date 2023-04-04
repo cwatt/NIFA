@@ -1,8 +1,8 @@
 ---
-title: "FullCyc2 incorporators"
+title: "FullCyc2 incorporators workup"
 author: "Cassandra Wattenburger"
 date: "3/15/2023"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -23,8 +23,7 @@ sessionInfo()
 # Import data
 
 ```{r}
-incorp <- readRDS("../mothur_cluster/fullcyc2_l2fc_testoutput.rds")
-
+incorp <- readRDS("../cluster_monkeyrun/fullcyc2_l2fc_testoutput.rds")
 incorp
 ```
 
@@ -52,8 +51,6 @@ Save:
 saveRDS(incorp2, file="../data_intermediate/fullcyc2_incorp.rds")
 ```
 
-
-
 Create list of incorporator OTUs:
 
 ```{r, eval=FALSE}
@@ -73,28 +70,11 @@ growth_asvs <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds") %>%
 write_tsv(growth_asvs, "../mothur_cluster/growth_asvs.txt")
 ```
 
-Mothur kludger:
+Create dummy table for qiime2 clustering function:
 
 ```{r}
-dist <- read_csv("../mothur_cluster/fixed_alignment_dist2.csv", col_names=FALSE) %>% 
-  rename(OTU1=X1, OTU2=X2, dist=X3)
 
-numkey <- read_csv("../mothur_cluster/numberkey_otuasv.csv", col_names=FALSE) %>% 
-  rename(num=X1, OTU=X2)
-
-dist2 <- dist %>% 
-  full_join(numkey, by=join_by(OTU1==OTU)) %>% 
-  rename(num1=num) %>%
-  full_join(numkey, by=join_by(OTU2==OTU)) %>% 
-  rename(num2=num) %>%
-  select(num1, num2, dist) %>% 
-  na.omit() # remove coerced NA
 ```
-
-```{r, eval=FALSE}
-write_csv(dist2, file="../mothur_cluster/numkey_dist.csv")
-```
-
 
 
 
