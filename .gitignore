@@ -1,4 +1,5 @@
-cluster_monkeyrun/
+blast_fullcyc2/
+cluster_fullcyc2/
 .git_old/
 data_*/
 paprica_analysis/
@@ -11,3 +12,4 @@ figures/
 *.csv
 NIFA.Rproj
 .Rproj.user
+

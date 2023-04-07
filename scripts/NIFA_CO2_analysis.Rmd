@@ -89,9 +89,10 @@ t.test(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz44"
 ## mz 45
 littermz45_lm <- lm(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz45" & molecule=="c"))
 hist(resid(littermz45_lm)) # non-normal w/ or w/o log transform
-plot(predict(littermz45_lm), resid(littermz44_lm)) # heteroskedastic, worse with log transform
+plot(predict(littermz45_lm), resid(littermz45_lm)) # heteroskedastic, worse with log transform
 ## Switch to welch t-test
 t.test(mg ~ Soil, data=filter(resp_total, Litter=="litter" & Measurement=="mz45" & molecule=="c"), var.equal=FALSE)
+# ranked test?
 
 # No litter
 ## mz 44

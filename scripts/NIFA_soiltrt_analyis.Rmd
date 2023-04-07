@@ -224,7 +224,7 @@ growth_soilphytots %>%
 physeq <- readRDS("../data_intermediate/NIFA_physeq_rare.rds")
 
 # Distance
-phy_dist <- 
+#phy_dist <- 
 ```
 
 

@@ -1,5 +1,5 @@
 ---
-title: "FullCyc2 incorporators workup"
+title: "NIFA FullCyc2 incorporators workup"
 author: "Cassandra Wattenburger"
 date: "3/15/2023"
 output: github_document
@@ -24,56 +24,249 @@ sessionInfo()
 
 ```{r}
 incorp <- readRDS("../cluster_monkeyrun/fullcyc2_l2fc_testoutput.rds")
+
 incorp
 ```
 
+# Reformat data
 
 ```{r}
-# Reformat
-incorp2 <- incorp %>% 
-  mutate(ecosystem = gsub(".substrate == '12C-Con' & day == '[0-9]+' & ecosystem == '([a-z]+)'.+", "\\1", .id), # separate out .id column info
+# Reformat and exclude non-significant results
+incorp_sig <- incorp %>% 
+  mutate(ecosystem = gsub(".substrate == '12C-Con' & day == '[0-9]+' & ecosystem == '([a-z]+)'.+", "\\1", .id), # separate out .id column
          day = gsub(".substrate == '12C-Con' & day == '([0-9]+)' .+", "\\1", .id),
+         day = as.numeric(day),
          substrate = gsub(".+substrate == '13C-([a-z]+)'.+", "\\1", .id, ignore.case=T),
-         substrate = case_when(substrate=="Pal" ~ "palmitic acid", # double check these with Sam!!!
+         substrate = case_when(substrate=="Pal" ~ "palmitic acid",
                                substrate=="Ami" ~ "amino acid",
                                substrate=="Xyl" ~ "xylose",
                                substrate=="Cel" ~ "cellulose",
                                substrate=="Van" ~ "vanillin")) %>%
   select(OTU, ecosystem, day, substrate, log2FoldChange, padj) %>% 
-  filter(padj < 0.05) # filter incorporators
+  filter(padj < 0.05) # filter incorporators, Sam says deseq2 was set up so negative log2foldchange indicates incorporation
   
-incorp2
-```
-
-Save:
-
-```{r, eval=FALSE}
-saveRDS(incorp2, file="../data_intermediate/fullcyc2_incorp.rds")
+incorp_sig
 ```
 
 Create list of incorporator OTUs:
 
-```{r, eval=FALSE}
-incorp_otus <- select(incorp2, OTU) %>% 
+```{r}
+incorp_otus <- select(incorp_sig, OTU) %>% 
   unique()
+```
 
+```{r, eval=FALSE}
 write_tsv(incorp_otus, "../mothur_cluster/incorp_otus.txt")
 ```
 
 Create list of growing taxa from NIFA experiment:
 
-```{r, eval=FALSE}
+```{r}
 growth_asvs <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds") %>% 
   select(ASV) %>% 
   unique()
+```
 
+```{r, eval=FALSE}
 write_tsv(growth_asvs, "../mothur_cluster/growth_asvs.txt")
 ```
 
-Create dummy table for qiime2 clustering function:
+# BLAST processing
+
+Import: 
 
 ```{r}
+blast <- read_tsv("../blast_monkeyrun/nifa_fullcyc2_blastn_parsed.txt")
+head(blast)
+```
 
+Choose best hit for each ASV (with at least 97% identity):
+
+```{r}
+# Select best hit(s)
+blast_best <- filter(blast, Identity >= 97) %>% # remove hits lower than 97% identity
+  group_by(Query) %>% 
+  summarize(Identity = max(Identity)) %>% # choose highest identity match
+  ungroup()
+
+blast_best <- semi_join(blast, blast_best)
+blast_best
+
+# Tidy up
+blast_best <- select(blast_best, ASV=Query, blast_OTU=Hit, blast_identity=Identity, blast_evalue=Evalue)
+  
+# Some summary
+length(unique(blast_best$Query)) # ASVs matched with at least 97% identity
+min(blast_best$Identity) # lowest identity match in queries
+```
+
+Identify ties:
+
+```{r}
+# Isolate ASVs with multiple highest hits
+blast_dups_logic <- duplicated(blast_best$ASV)
+
+blast_dup_asvs <- blast_best %>% 
+  add_column(duplicated = blast_dups_logic) %>% 
+  filter(duplicated==TRUE) %>% 
+  select(ASV) %>% 
+  unique() %>% 
+  as.list()
+
+# How many ASVs with duplicate equally best hits?
+length(blast_dup_asvs$ASV)
+
+# Isolate duplicate hits
+blast_dups <- blast_best %>% 
+  filter(ASV %in% blast_dup_asvs$ASV)
+
+# Isolate single hits
+blast_sing <- blast_best %>% 
+  filter(!(ASV %in% blast_dup_asvs$ASV))
+```
+
+# PIN: duplicates?
+Will need to think about how to handle these.
+
+## Label high latency incorporators
+
+Latency refers to the length of time between the maximum respiration rate of a substrate and the day the OTU incorporated that substrate. If the OTU incorporated the substrate before the maximal respiration day, it likely directly metabolized the substrate. If the OTU incorporated the ubstrate far after the maximal respiration rate, the likelihood of secondary metabolism is greater (eating a microbe that died after it metabolizing the substrate).
+
+Remove day 30 incorporators:
+
+Max mineralization of all substrates occured far before day 30, so incorporation after that is likely secondary.
+
+```{r}
+# Label day 30 as latent
+incorp_sig <- incorp_sig %>% 
+  mutate(latent = if_else(day < 30, "no", "yes"))
+```
+
+Remove day 6 and 14 incorporators for xylose and amino acid:
+
+Maximal respiration of these substrates was before those days in all ecosystems.
+
+```{r}
+# Label latent
+incorp_sig <- incorp_sig %>% 
+  mutate(latent = if_else(((substrate=="xylose" | substrate=="amino acid") & (day==6 | day==14)), "yes", latent))
+```
+
+## Add incorporation data
+
+Based on nearest BLAST hit to incorporator OTUs.
+
+```{r}
+# Reformat incorporator data
+incorp_sig <- incorp_sig %>% 
+  mutate(label=paste0(OTU, ecosystem, day, latent)) # create id column
+
+incorp_meta <- select(incorp_sig, label, OTU, ecosystem, day, latent) %>% 
+  unique()
+
+incorp_long <- incorp_sig %>% 
+  add_column(incorporator = "yes") %>% 
+  select(label, OTU, ecosystem, day, latent, substrate, incorporator) %>% 
+  pivot_wider(id_cols=label, names_from=substrate, values_from=incorporator) %>% 
+  mutate_all(~ if_else(is.na(.x), "no", .x))
+
+incorp_final <- full_join(incorp_long, incorp_meta, by=join_by(label)) %>% 
+  select(label, OTU, ecosystem, day, latent, palmitic_acid=`palmitic acid`, amino_acid=`amino acid`, xylose, cellulose, vanillin)
+
+# Join blast results with incorporation data
+blast_incorp <- full_join(incorp_final, blast_best, by=join_by(OTU==blast_OTU)) %>% 
+  filter(!is.na(ASV)) %>% 
+  rename(blast_OTU=OTU, incorp_day=day, incorp_eco=ecosystem) %>% 
+  select(ASV, blast_OTU, blast_identity, blast_evalue, latent, incorp_eco:vanillin) %>% 
+  arrange(ASV)
+
+# Reformat
+blast_incorp <- blast_incorp %>% 
+  pivot_longer(cols=c(palmitic_acid:vanillin), names_to="substrate", values_to="incorporator")
+
+blast_incorp
+```
+
+# Summarize incorporator hits to ASVs
+
+BLAST % identity:
+
+```{r}
+asv_identity <- blast_incorp %>% 
+  group_by(ASV) %>% 
+  summarize(identity=mean(blast_identity)) %>% 
+  ungroup()
+  
+mean(asv_identity$identity)
+min(asv_identity$identity)
+max(asv_identity$identity)
+hist(asv_identity$identity, main="Histogram", xlab="Percent identity to nearest BLAST hit")
+```
+
+BLAST e-values:
+
+```{r}
+asv_evalue <- blast_incorp %>% 
+  group_by(ASV) %>% 
+  summarize(evalue=mean(blast_evalue)) %>% 
+  ungroup()
+  
+mean(asv_evalue$evalue)
+min(asv_evalue$evalue)
+max(asv_evalue$evalue)
+```
+
+Number of incorporation hits per substrate:
+
+```{r}
+# Summary table
+blast_incorp %>% 
+  select(blast_OTU, incorp_eco, incorp_day, latent, substrate, incorporator) %>% 
+  unique() %>% # remove duplicates created by blast ties to asvs
+  filter(incorporator=="yes" & latent=="no") %>% # only non-latent incorporators
+  # Add up the blast hit incorporators for each substrate (rethink this through sometime to double check math)
+  group_by(substrate, incorp_eco, incorp_day) %>% # count number of incorporating taxa in each group
+  summarize(total=n()) %>% 
+  ungroup() %>% 
+  group_by(substrate, incorp_eco) %>% # sum that number across all days
+  summarize(total=sum(total)) %>% 
+  ungroup() %>%
+  group_by(substrate) %>%
+  summarize(total=sum(total)) %>% # sum that number across ecosystems
+  ungroup()
+
+# Visualize
+blast_incorp %>% 
+  select(blast_OTU, incorp_eco, incorp_day, latent, substrate, incorporator) %>% 
+  unique() %>% # remove duplicates created by blast ties to asvs
+  filter(incorporator=="yes" & latent=="no") %>% # only non-latent incorporators
+  # Add up the blast hit incorporators for each substrate (rethink this through sometime to double check math)
+  group_by(substrate, incorp_eco, incorp_day) %>% # count number of incorporating taxa in each group
+  summarize(total=n()) %>% 
+  ungroup() %>% 
+  group_by(substrate, incorp_eco) %>% # sum that number across all days
+  summarize(total=sum(total)) %>% 
+  ungroup() %>%
+  group_by(substrate) %>%
+  summarize(total=sum(total)) %>% # sum that number across ecosystems
+  ungroup() %>%
+  ggplot(aes(x=reorder(substrate, -total), y=total)) +
+  geom_col() +
+  labs(title="ASV hits to incorporators", y="ASVs capable of incorporation", x="substrate") +
+  theme_test()
+```
+
+#BOOKMARK
+# Incorporation vs growth
+
+Add growth metrics and genomic characteristics based on ASVs:
+
+```{r}
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+
+growth
+pap
 ```
 
 
