@@ -23,9 +23,12 @@ sessionInfo()
 # Import data
 
 ```{r}
-incorp <- readRDS("../cluster_monkeyrun/fullcyc2_l2fc_testoutput.rds")
-
+# Incorporator data from DulLC
+incorp <- readRDS("../cluster_fullcyc2/fullcyc2_l2fc_testoutput.rds")
 incorp
+
+# Taxonomy of incorporators
+incorp_tax <- incorp %>% select(OTU, Phylum:Species)
 ```
 
 # Reformat data
@@ -76,7 +79,7 @@ write_tsv(growth_asvs, "../mothur_cluster/growth_asvs.txt")
 Import: 
 
 ```{r}
-blast <- read_tsv("../blast_monkeyrun/nifa_fullcyc2_blastn_parsed.txt")
+blast <- read_tsv("../blast_fullcyc2/nifa_fullcyc2_blastn_parsed.txt")
 head(blast)
 ```
 
@@ -106,7 +109,7 @@ Identify ties:
 # Isolate ASVs with multiple highest hits
 blast_dups_logic <- duplicated(blast_best$ASV)
 
-blast_dup_asvs <- blast_best %>% 
+blast_dups_asvs <- blast_best %>% 
   add_column(duplicated = blast_dups_logic) %>% 
   filter(duplicated==TRUE) %>% 
   select(ASV) %>% 
@@ -114,27 +117,141 @@ blast_dup_asvs <- blast_best %>%
   as.list()
 
 # How many ASVs with duplicate equally best hits?
-length(blast_dup_asvs$ASV)
+length(blast_dups_asvs$ASV)
 
 # Isolate duplicate hits
 blast_dups <- blast_best %>% 
-  filter(ASV %in% blast_dup_asvs$ASV)
+  filter(ASV %in% blast_dups_asvs$ASV)
 
 # Isolate single hits
 blast_sing <- blast_best %>% 
-  filter(!(ASV %in% blast_dup_asvs$ASV))
+  filter(!(ASV %in% blast_dups_asvs$ASV))
 ```
 
-# PIN: duplicates?
-Will need to think about how to handle these.
+## Deal with duplicate hits
+
+For ASVs with two or more OTU hits with equal percentage identity, I'll choose the lowest e-value. If e values also tie, I'll keep the OTU properties of both (or all) OTU hits.
+
+https://www.ncbi.nlm.nih.gov/books/NBK62051/
+
+```{r}
+blast_dups_eval <- blast_dups %>% 
+  group_by(ASV) %>% 
+  summarize(blast_evalue = min(blast_evalue)) %>% # isolate lowest e-value hit
+  ungroup()
+
+# Filter by min. e-value
+blast_dups <- blast_dups %>% 
+  semi_join(blast_dups_eval)
+
+# Remaining duplicates
+blast_dups_logic2 <- duplicated(blast_dups$ASV)
+blast_dups_asvs2 <- blast_dups %>% 
+  add_column(duplicated = blast_dups_logic2) %>% 
+  filter(duplicated==TRUE) %>% 
+  select(ASV) %>% 
+  unique() %>% 
+  as.list()
+
+blast_dups2 <- filter(blast_dups, ASV %in% blast_dups_asvs2$ASV)
+blast_dups2
+```
+
+Look at taxonomy of duplicate OTU hits
+
+Are they closely related?
+
+```{r}
+# Isolate OTU hits from taxonomy info
+tax_dups <- filter(incorp_tax, OTU %in% unique(blast_dups2$blast_OTU)) %>% 
+  unique()
+
+# Merge with blast results
+blast_dups2 <- blast_dups2 %>% 
+  left_join(tax_dups, by=join_by(blast_OTU==OTU))
+
+blast_dups2
+```
+
+Visualize:
+
+```{r}
+# Phylum level
+blast_dups2 %>% 
+  ggplot(aes(x=Phylum, y=blast_identity, color=ASV)) +
+  geom_point(alpha=0.8) +
+  facet_wrap(~ASV, scales = "free") +
+  theme_test() +
+  theme(legend.position = "none",
+        axis.text.y = element_blank())
+
+# Class
+blast_dups2 %>% 
+  ggplot(aes(x=Class, y=blast_identity, color=ASV)) +
+  geom_point(alpha=0.8) +
+  facet_wrap(~ASV, scales = "free") +
+  theme_test() +
+  theme(legend.position = "none",
+        axis.text.y = element_blank())
+
+# Order
+blast_dups2 %>% 
+  ggplot(aes(x=Order, y=blast_identity, color=ASV)) +
+  geom_point(alpha=0.8) +
+  facet_wrap(~ASV, scales = "free") +
+  theme_test() +
+  theme(legend.position = "none",
+        axis.text.y = element_blank())
+
+# Family
+blast_dups2 %>% 
+  ggplot(aes(x=Family, y=blast_identity, color=ASV)) +
+  geom_point(alpha=0.8) +
+  facet_wrap(~ASV, scales = "free") +
+  theme_test() +
+  theme(legend.position = "none",
+        axis.text.y = element_blank())
+
+# Genus
+blast_dups2 %>% 
+  ggplot(aes(x=Genus, y=blast_identity, color=ASV)) +
+  geom_point(alpha=0.8) +
+  facet_wrap(~ASV, scales = "free") +
+  theme_test() +
+  theme(legend.position = "none",
+        axis.text.y = element_blank())
+
+# Species
+blast_dups2 %>% 
+  ggplot(aes(x=Species, y=blast_identity, color=ASV)) +
+  geom_point(alpha=0.8) +
+  facet_wrap(~ASV, scales = "free") +
+  theme_test() +
+  theme(legend.position = "none",
+        axis.text.y = element_blank())
+```
+
+These plots tell me if the duplicate OTU hits fall in the same or different taxonomic groups. One dot per graph means they all are within the same group.
+
+Duplicate OTU hits start diverging ~ order level, but the splits are among "uncultured", "ambigious", or "NA" groups which tells me these are uncultured and uncharacterized which would explain variation in higher resolution taxonomic placement. Overall taxa are very closely related, as expected. Likely OK to merge the substrate use qualities for the ASVs
+
+Combine single and duplicate blast results:
+# BOOKMARK
+```{r}
+# Put single hits back in with duplicate hits
+blast_mh <- bind_rows(blast_sing, blast_dups) %>% 
+  mutate(multiple_hit=if_else(ASV %in% blast_dups_asvs2$ASV, "yes", "no")) # Add multiple hit warning column
+
+blast_mh
+```
 
 ## Label high latency incorporators
 
-Latency refers to the length of time between the maximum respiration rate of a substrate and the day the OTU incorporated that substrate. If the OTU incorporated the substrate before the maximal respiration day, it likely directly metabolized the substrate. If the OTU incorporated the ubstrate far after the maximal respiration rate, the likelihood of secondary metabolism is greater (eating a microbe that died after it metabolizing the substrate).
+Latency refers to the length of time between the maximum respiration rate of a substrate and the day the OTU incorporated that substrate. If the OTU incorporated the substrate before the maximal respiration day, it likely directly metabolized the substrate. If the OTU incorporated the ubstrate far after the maximal respiration rate, the likelihood of secondary metabolism is greater (eating a microbe that died after it metabolizing the substrate) or the taxa was slow growing but directly metabolized the substrate.
 
 Remove day 30 incorporators:
 
-Max mineralization of all substrates occured far before day 30, so incorporation after that is likely secondary.
+Max mineralization of all substrates occured far before day 30.
 
 ```{r}
 # Label day 30 as latent
@@ -144,7 +261,7 @@ incorp_sig <- incorp_sig %>%
 
 Remove day 6 and 14 incorporators for xylose and amino acid:
 
-Maximal respiration of these substrates was before those days in all ecosystems.
+Maximal respiration of these substrates occurred before day 6 in all ecosystems.
 
 ```{r}
 # Label latent
@@ -152,9 +269,7 @@ incorp_sig <- incorp_sig %>%
   mutate(latent = if_else(((substrate=="xylose" | substrate=="amino acid") & (day==6 | day==14)), "yes", latent))
 ```
 
-## Add incorporation data
-
-Based on nearest BLAST hit to incorporator OTUs.
+## Add incorp. info to BLAST results
 
 ```{r}
 # Reformat incorporator data
@@ -173,11 +288,16 @@ incorp_long <- incorp_sig %>%
 incorp_final <- full_join(incorp_long, incorp_meta, by=join_by(label)) %>% 
   select(label, OTU, ecosystem, day, latent, palmitic_acid=`palmitic acid`, amino_acid=`amino acid`, xylose, cellulose, vanillin)
 
+incorp_final
+```
+
+
+```{r}
 # Join blast results with incorporation data
-blast_incorp <- full_join(incorp_final, blast_best, by=join_by(OTU==blast_OTU)) %>% 
+blast_incorp <- full_join(incorp_final, blast_mh, by=join_by(OTU==blast_OTU)) %>% 
   filter(!is.na(ASV)) %>% 
   rename(blast_OTU=OTU, incorp_day=day, incorp_eco=ecosystem) %>% 
-  select(ASV, blast_OTU, blast_identity, blast_evalue, latent, incorp_eco:vanillin) %>% 
+  select(ASV, blast_OTU, blast_identity, blast_evalue, multiple_hit, label, incorp_eco, latent, palmitic_acid:vanillin) %>% 
   arrange(ASV)
 
 # Reformat
@@ -186,6 +306,12 @@ blast_incorp <- blast_incorp %>%
 
 blast_incorp
 ```
+
+```{r}
+# are any otu hits only present in forest?
+
+```
+
 
 # Summarize incorporator hits to ASVs
 
