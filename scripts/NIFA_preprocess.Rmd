@@ -184,8 +184,8 @@ count_stdsum <- count_rare %>%
 
 # Divide taxa counts by internal std counts in each sample
 count_norm <- count_stdsum %>% 
-  pivot_wider(SampleID, names_from = ASV_std, values_from = count) %>%
-  mutate(across(-SampleID, ~ .x/int_std, {.col})) %>%
+  pivot_wider(id_cols=SampleID, names_from = ASV_std, values_from = count) %>%
+  mutate(across(-SampleID, ~ .x/int_std)) %>%
   select(-int_std) # remove Aquifex ASVs
 
 # Merge and reformat
@@ -205,5 +205,14 @@ norm_meta <- norm_meta[!is.infinite(norm_meta$norm_abund),] %>%
 ```{r, eval=FALSE}
 # Save normalized abundances
 saveRDS(norm_meta, file="../data_intermediate/NIFA_normalized.rds")
+```
+
+```{r, eval=FALSE, echo=FALSE}
+# Ben collab reformat
+ben_collab <- norm_meta %>% 
+  filter(Isotope=="12C") %>% 
+  select(Microcosm, Replicate, Soil, Day, ASV, norm_abund)
+
+write_tsv(ben_collab, file="../data_intermediate/ben_norm_abund.tsv")
 ```
 

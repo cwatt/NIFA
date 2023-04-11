@@ -218,7 +218,7 @@ growth_soilphytots %>%
 ```
 
 ## Beta diversity
-
+# BOOKMARK
 ```{r}
 # Import phyloseq object
 physeq <- readRDS("../data_intermediate/NIFA_physeq_rare.rds")
@@ -385,8 +385,12 @@ growth_death_com %>%
 ## Statistics
 
 Growth:
-
+# BOOKMARK
 ```{r}
+# generation time
+
+# 
+
 # Change abund
 chabund_gr_lm <- lm(change_abund_corr ~ Soil, 
                  data=growth_death_com[growth_death_com$type=="growth",])
@@ -460,6 +464,8 @@ Visualize:
 
 ```{r}
 # Visualize
+
+# Growth traits
 growth_death_asv %>% 
   pivot_longer(cols = -c(Soil, ASV, type), names_to = "variable", values_to = "value") %>% 
   ggplot(aes(x=type, y=abs(value), color=Soil)) +
@@ -580,17 +586,15 @@ growth_death_asv %>%
 ```
 
 ## Statistics
-
-Growth:
 # BOOKMARK
 ```{r}
-# NOTE: I don't need to average asvs, can use unaveraged data with lmer
-library(lmerTest)
-# chg_lmer <- lmer(log(change_abund_corr) ~ group + (1 + Inoculant | Inoculant), growth_grp)
-# hist(resid(chg_lmer))
-# plot(predict(chg_lmer), resid(chg_lmer))
-# anova(chg_lmer)
+# Growth
+
+
+# Death
 ```
+
+
 
 Death:
 

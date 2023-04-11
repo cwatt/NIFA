@@ -5161,3 +5161,26 @@ Shutdown this notebook server (y/[n])? No answer for 5s: resuming operation...
 [32m[I 11:38:48.976 NotebookApp][m Kernel started: 7ab8bf1f-aee9-4cb8-940d-e19e6cc01a8f, name: python3
 [32m[I 11:38:51.632 NotebookApp][m Starting buffering for 7ab8bf1f-aee9-4cb8-940d-e19e6cc01a8f:4124f8c13d0643058edfa004b8d56ea9
 [32m[I 12:52:07.566 NotebookApp][m Starting buffering for 7ab8bf1f-aee9-4cb8-940d-e19e6cc01a8f:2c041bf4a5bb42398a2f98f0d0bbfd80
+[35m[C 13:18:34.372 NotebookApp][m Bad config encountered during initialization: The 'port' trait of a NotebookApp instance expected an int, not the str 'NIFA'.
+[33m[W 13:18:46.035 NotebookApp][m Loading JupyterLab as a classic notebook (v6) extension.
+[33m[W 2023-04-11 13:18:46.036 LabApp][m 'port' has moved from NotebookApp to ServerApp. This config will be passed to ServerApp. Be sure to update your config before our next release.
+[33m[W 2023-04-11 13:18:46.036 LabApp][m 'port' has moved from NotebookApp to ServerApp. This config will be passed to ServerApp. Be sure to update your config before our next release.
+[33m[W 2023-04-11 13:18:46.036 LabApp][m 'port' has moved from NotebookApp to ServerApp. This config will be passed to ServerApp. Be sure to update your config before our next release.
+[32m[I 2023-04-11 13:18:46.039 LabApp][m JupyterLab extension loaded from /home/cassi/anaconda3/lib/python3.10/site-packages/jupyterlab
+[32m[I 2023-04-11 13:18:46.039 LabApp][m JupyterLab application directory is /home/cassi/anaconda3/share/jupyter/lab
+[32m[I 13:18:50.894 NotebookApp][m Serving notebooks from local directory: /home/cassi/NIFA
+[32m[I 13:18:50.894 NotebookApp][m Jupyter Notebook 6.5.2 is running at:
+[32m[I 13:18:50.894 NotebookApp][m http://localhost:3331/?token=9ed13368898b2cf2ba187fa45eccf53b190b4d176b53498e
+[32m[I 13:18:50.894 NotebookApp][m  or http://127.0.0.1:3331/?token=9ed13368898b2cf2ba187fa45eccf53b190b4d176b53498e
+[32m[I 13:18:50.894 NotebookApp][m Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[35m[C 13:18:50.905 NotebookApp][m 
+    
+    To access the notebook, open this file in a browser:
+        file:///home/cassi/.local/share/jupyter/runtime/nbserver-78017-open.html
+    Or copy and paste one of these URLs:
+        http://localhost:3331/?token=9ed13368898b2cf2ba187fa45eccf53b190b4d176b53498e
+     or http://127.0.0.1:3331/?token=9ed13368898b2cf2ba187fa45eccf53b190b4d176b53498e
+[32m[I 13:18:59.204 NotebookApp][m 302 GET /?token=9ed13368898b2cf2ba187fa45eccf53b190b4d176b53498e (127.0.0.1) 1.000000ms
+[32m[I 13:19:21.727 NotebookApp][m Kernel started: 052d7b95-7d23-4123-9b42-9e8f7240b952, name: python3
+[32m[I 13:21:21.784 NotebookApp][m Saving file at /scripts/NIFA2.dada2.pipeline.ipynb
+[32m[I 17:25:02.178 NotebookApp][m Starting buffering for 052d7b95-7d23-4123-9b42-9e8f7240b952:8d49601d360f4b0eb057fe02c240909c
