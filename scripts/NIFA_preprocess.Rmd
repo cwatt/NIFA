@@ -75,8 +75,8 @@ Mitochondrial, chloroplast, protist, and unknown domain/phylum sequences.
 
 ```{r}
 # Remove non-prokaryotic ASVs
-physeq2 <- subset_taxa(physeq, !(Order=="Chloroplast" | Family=="Mitochondria" | Domain=="Unassigned" | 
-                                   Domain=="putative Unassigned" | Domain=="putative Bacteria" | Phylum == "unclassified Bacteria"))
+physeq2 <- subset_taxa(physeq, !(Order=="Chloroplast" | Family=="Mitochondria" | Domain=="Unassigned" | Domain=="putative Unassigned" | Domain=="putative Bacteria" | Phylum == "unclassified Bacteria"))
+
 physeq2
 ```
 
@@ -214,5 +214,52 @@ ben_collab <- norm_meta %>%
   select(Microcosm, Replicate, Soil, Day, ASV, norm_abund)
 
 write_tsv(ben_collab, file="../data_intermediate/ben_norm_abund.tsv")
+```
+
+# Rarefy without internal std for diversity analyses
+
+Screws up weighted unifrac because it comprises so much of the counts in each sample.
+
+```{r}
+# remove internal standard ASVs
+physeq4 <- subset_taxa(physeq3, !(ASV %in% aqui_asvs))
+physeq4
+
+# Extract count and metadata from processed phyloseq object
+count_processed <- data.frame(otu_table(physeq4))
+
+meta_processed <- data.frame(sample_data(physeq4)) %>% 
+  select(everything(), -SampleID) %>% 
+  rownames_to_column(var="SampleID")
+
+# Calculate read depth per sample
+read_depth <- count_processed %>%
+  colSums() %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var="SampleID") %>% 
+  inner_join(meta_processed) %>% 
+  rename_at('.', ~'reads')
+  
+# Visualize
+read_depth %>%
+  mutate(Replicate = as_factor(Replicate)) %>%
+  #filter(Type != "pcr_control") %>%
+  ggplot(aes(x=reorder(SampleID, -reads), y=reads, fill=Replicate)) +
+  geom_col() +
+  geom_hline(yintercept=8000) +
+  labs(x="Sample", y="Reads") +
+  theme_test()
+
+sort(read_depth$reads)
+
+# Rarefy to 8018 reads
+physeq_rare_nostd <- rarefy_even_depth(physeq4, sample.size=8018)
+physeq_rare_nostd
+```
+
+Save:
+
+```{r, eval=FALSE}
+saveRDS(physeq_rare_nostd, file="../data_intermediate/NIFA_physeq_rare_nostd.rds")
 ```
 

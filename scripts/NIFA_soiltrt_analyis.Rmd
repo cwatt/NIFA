@@ -16,6 +16,8 @@ knitr::opts_chunk$set(message = FALSE)
 rm(list=ls())
 
 library("tidyverse")
+library("phyloseq")
+library("ape")
 
 sessionInfo()
 ```
@@ -53,6 +55,11 @@ tax <- read_tsv("../data_amplicon/NIFA2/final/NIFA2.taxonomy-final.tsv")
 
 # metadata
 meta <- read_tsv("../NIFA_metadata.tsv")
+meta_sa <- meta %>% 
+  mutate(SampleID_seq = paste0("sa", SampleID)) # match with phyloseq's coerced sample names
+
+# Phyloseq, rarefied with no int std
+physeq <- readRDS("../data_intermediate/NIFA_physeq_rare_nostd.rds")
 ```
 
 Reformat data: 
@@ -83,24 +90,44 @@ growth_death <- death2 %>%
 After preprocessing, sparcity filtering, and rarefication.
 
 ```{r}
-# Agricultural ASVs before estimation
-abund %>% 
-  mutate(ASV = gsub("[a-z]+[1-3]_(.+)", "\\1", label, ignore.case = TRUE)) %>% 
-  filter(Soil=="Ag") %>% 
-  select(ASV) %>% 
-  unique() %>% 
-  nrow()
+# Calculate richness per sample
+asv_count <- data.frame(otu_table(physeq))
+richness <- asv_count %>% 
+  mutate(across(everything(), ~if_else(.x > 0, 1, 0))) %>% # presence/absence
+  colSums() %>% 
+  data.frame() %>% 
+  rename(richness=".") %>% 
+  rownames_to_column(var="SampleID_seq") %>% 
+  left_join(meta_sa) %>% # add metadata
+  select(SampleID, Microcosm, Soil, Replicate, Day, Isotope, richness)
 
-# Meadow
-abund %>% 
-  mutate(ASV = gsub("[a-z]+[1-3]_(.+)", "\\1", label, ignore.case = TRUE)) %>% 
-  filter(Soil=="Meadow") %>% 
-  select(ASV) %>% 
-  unique() %>% 
-  nrow()
+# Summarize for each soil
+richness %>% 
+  filter(Isotope=="12C") %>% 
+  group_by(Soil, Isotope) %>% 
+  summarize(richness_mean = mean(richness),
+            richness_sd = sd(richness))
+
+# Summarize by soil and day
+richness %>% 
+  filter(Isotope=="12C") %>% 
+  group_by(Soil, Day, Isotope) %>% 
+  summarize(richness_mean = mean(richness),
+            richness_sd = sd(richness))
 ```
 
-Total unique ASVs with estimates:
+Visualize:
+
+```{r}
+richness %>% 
+  filter(Isotope=="12C") %>% 
+  ggplot(aes(x=Day, y=richness, color=Soil)) +
+  geom_point() +
+  geom_smooth(method="lm", linetype=2, lpah=0.5) +
+  theme_test()
+```
+
+Total unique ASVs with growht/death estimates:
 
 ```{r}
 # Growth
@@ -218,15 +245,41 @@ growth_soilphytots %>%
 ```
 
 ## Beta diversity
-# BOOKMARK
-```{r}
-# Import phyloseq object
-physeq <- readRDS("../data_intermediate/NIFA_physeq_rare.rds")
 
-# Distance
-#phy_dist <- 
+```{r}
+set.seed(2023)
+
+# Make tree binary (fixes this issue: https://github.com/joey711/phyloseq/issues/936)
+tree <- phy_tree(physeq)
+is.rooted(tree)
+tree_binary <- multi2di(tree)
+
+physeq2 <- phyloseq(sample_data(physeq), otu_table(physeq), tax_table(physeq), tree_binary)
+physeq2 <- subset_samples(physeq2, Isotope=="12C") # remove 13C samples
+
+# Distance, weighted unifrac
+wuni_dist <- distance(physeq2, method="wunifrac")
+
+# Distance, unweighted unifrac
+uni_dist <- distance(physeq2, method="uunifrac")
+
+# Ordinate, NMDS
+nmds_wuni <- ordinate(physeq2, method="NMDS", distance=wuni_dist) 
+nmds_uni <- ordinate(physeq2, method="NMDS", distance=uni_dist)
 ```
 
+Visualize:
+
+```{r}
+# Visualize
+plot_ordination(physeq2, nmds_wuni, color="Day", shape="Soil") +
+  labs(title="Unweighted unifrac") +
+  theme_test() 
+
+plot_ordination(physeq2, nmds_uni, color="Day", shape="Soil") +
+  labs(title="Unweighted unifrac") +
+  theme_test() 
+```
 
 # Community-level
 
@@ -366,7 +419,7 @@ growth_death_com %>%
   select(Soil, Replicate, type, g, start_day, start_abund=start_abund_corr, end_abund=end_abund_corr, change_abund=change_abund_corr, n16S) %>%
   pivot_longer(cols = -c(Soil, Replicate, type), names_to = "variable", values_to = "value") %>%
   mutate(variable = factor(variable, levels=c("start_day", "g", "n16S", "start_abund", "end_abund", "change_abund"))) %>%
-  ggplot(aes(x=type, y=log(abs(value)), shape=Soil)) +
+  ggplot(aes(x=type, y=abs(value), shape=Soil)) +
   geom_jitter(width=0.1, size=2) +
   facet_wrap(~variable, scales="free") +
   #scale_color_manual(values=palette_bw2) +
@@ -385,11 +438,26 @@ growth_death_com %>%
 ## Statistics
 
 Growth:
-# BOOKMARK
+
 ```{r}
 # generation time
+g_gr_lm <- lm(log(g) ~ Soil, data=growth_death_com[growth_death_com$type=="growth",])
+hist(resid(g_gr_lm)) # ????
+plot(predict(g_gr_lm), resid(g_gr_lm)) # homoskedastic
+anova(g_gr_lm)
 
-# 
+# start day
+lag_gr_lm <- lm(start_day ~ Soil, data=growth_death_com[growth_death_com$type=="growth",])
+hist(resid(lag_gr_lm)) # non-normal
+plot(predict(lag_gr_lm), resid(g_gr_lm)) # homoskedastic
+# Use non-parametric
+lag_gr_welch <- t.test(start_day ~ Soil, data=growth_death_com[growth_death_com$type=="growth",], var.equal=FALSE)
+
+# n16S
+n16S_gr_lm <- lm(n16S ~ Soil, data=growth_death_com[growth_death_com$type=="growth",])
+hist(resid(n16S_gr_lm)) # ????
+plot(predict(n16S_gr_lm), resid(g_gr_lm)) # homoskedastic
+anova(n16S_gr_lm)
 
 # Change abund
 chabund_gr_lm <- lm(change_abund_corr ~ Soil, 
@@ -411,33 +479,68 @@ endabund_gr_lm <- lm(log(end_abund_corr) ~ Soil,
 hist(resid(endabund_gr_lm))
 plot(predict(endabund_gr_lm), resid(endabund_gr_lm))
 summary(endabund_gr_lm)
+
+# Multiple test correction
+growth_com_padj <- p.adjust(c(summary(g_gr_lm)$coefficients[2,4], lag_gr_welch$p.value, 
+                              summary(n16S_gr_lm)$coefficients[2,4], summary(chabund_gr_lm)$coefficients[2,4], 
+                              summary(startabund_gr_lm)$coefficients[2,4], summary(endabund_gr_lm)$coefficients[2,4]), 
+                            method = "holm", n=6)
+
+growth_com_padj
 ```
 
 Death:
 
 ```{r}
+# generation time
+g_de_lm <- lm(log(g) ~ Soil, data=growth_death_com[growth_death_com$type=="death",])
+hist(resid(g_de_lm)) # ????
+plot(predict(g_de_lm), resid(g_de_lm)) # homoskedastic
+anova(g_de_lm)
+
+# start day
+lag_de_lm <- lm(start_day ~ Soil, data=growth_death_com[growth_death_com$type=="death",])
+hist(resid(lag_de_lm)) # ????
+plot(predict(lag_de_lm), resid(g_de_lm)) # homoskedastic
+anova(lag_de_lm)
+
+# n16S
+n16S_de_lm <- lm(log(n16S) ~ Soil, data=growth_death_com[growth_death_com$type=="death",])
+hist(resid(n16S_de_lm)) # non-normal
+plot(predict(n16S_de_lm), resid(n16S_de_lm)) # heteroskedastic
+# Use welch t.test to deal with heteroskedasticity
+n16S_de_kw <- t.test(n16S ~ Soil, data=growth_death_com[growth_death_com$type=="death",], var.equal=FALSE)
+
 # Change abund
 chabund_de_lm <- lm(log(abs(change_abund_corr)) ~ Soil, 
                  data=growth_death_com[growth_death_com$type=="death",])
-hist(resid(chabund_de_lm)) 
-plot(predict(chabund_de_lm), resid(chabund_de_lm))
-summary(chabund_de_lm)
+hist(resid(chabund_de_lm)) # non-normal even with log transform
+plot(predict(chabund_de_lm), resid(chabund_de_lm)) # homoskedastic
+# Use non-parametric test
+chabund_de_kw <- kruskal.test(change_abund_corr ~ Soil, data=growth_death_com[growth_death_com$type=="death",])
 
 # Start abund
 startabund_de_lm <- lm(log(start_abund_corr) ~ Soil, 
                  data=growth_death_com[growth_death_com$type=="death",])
-hist(resid(startabund_de_lm))
-plot(predict(startabund_de_lm), resid(startabund_de_lm))
-summary(startabund_de_lm)
+hist(resid(startabund_de_lm)) # non-normal
+plot(predict(startabund_de_lm), resid(startabund_de_lm)) # homoskedastic
+# Use non-parametric test
+startabund_de_kw <- kruskal.test(start_abund_corr ~ Soil, data=growth_death_com[growth_death_com$type=="death",])
 
 # End abund
 endabund_de_lm <- lm(log(end_abund_corr) ~ Soil, 
                  data=growth_death_com[growth_death_com$type=="death",])
-hist(resid(endabund_de_lm))
+hist(resid(endabund_de_lm)) # normal
 plot(predict(endabund_de_lm), resid(endabund_de_lm)) # heteroskedastic
-## Welch's t-test on log transformed data
-t.test(log(end_abund_corr) ~ Soil, 
-                 data=growth_death_com[growth_death_com$type=="death",], equal.var=FALSE)
+# Use welch t-test
+endabund_de_welch <- t.test(end_abund_corr ~ Soil, data=growth_death_com[growth_death_com$type=="death",], equal.var=FALSE)
+
+# Multiple test correction
+death_com_padj <- p.adjust(c(summary(g_de_lm)$coefficients[2,4], summary(lag_de_lm)$coefficients[2,4],
+                             n16S_de_welch$p.value, chabund_de_kw$p.value, startabund_de_kw$p.value, endabund_de_welch$p.value),
+                           method = "holm", n=6)
+
+death_com_padj
 ```
 
 # ASV-level
@@ -586,15 +689,114 @@ growth_death_asv %>%
 ```
 
 ## Statistics
-# BOOKMARK
+
+Growth ASV-level:
+
 ```{r}
-# Growth
+# generation time
+g_gr_lm <- lm(log(g) ~ Soil, data=growth_death_asv[growth_death_asv$type=="growth",])
+hist(resid(g_gr_lm)) # normal
+plot(predict(g_gr_lm), resid(g_gr_lm)) # homoskedastic
+summary(g_gr_lm)
 
+# start day
+lag_gr_lm <- lm(start_day ~ Soil, data=growth_death_asv[growth_death_asv$type=="growth",])
+hist(resid(lag_gr_lm)) # non-normal
+plot(predict(lag_gr_lm), resid(g_gr_lm)) # homoskedastic
+# Use non-parametric test
+lag_gr_kw <- kruskal.test(start_day ~ Soil, data=growth_death_asv[growth_death_asv$type=="growth",])
 
-# Death
+# n16S
+n16S_gr_lm <- lm(n16S ~ Soil, data=growth_death_asv[growth_death_asv$type=="growth",])
+hist(resid(n16S_gr_lm)) # non-normal
+plot(predict(n16S_gr_lm), resid(g_gr_lm)) # homoskedastic
+# Use non-parametric test
+n16S_gr_kw <- kruskal.test(n16S ~ Soil, data=growth_death_asv[growth_death_asv$type=="growth",])
+
+# Change abund
+chabund_gr_lm <- lm(log(change_abund_corr) ~ Soil, 
+                 data=growth_death_asv[growth_death_asv$type=="growth",])
+hist(resid(chabund_gr_lm)) # normal
+plot(predict(chabund_gr_lm), resid(chabund_gr_lm)) # homoskedastic w/ or w/o log transform
+summary(chabund_gr_lm)
+
+# Start abund
+startabund_gr_lm <- lm(log(start_abund_corr) ~ Soil, 
+                 data=growth_death_asv[growth_death_asv$type=="growth",])
+hist(resid(startabund_gr_lm)) # normal
+plot(predict(startabund_gr_lm), resid(startabund_gr_lm)) # homoskedastic
+summary(startabund_gr_lm)
+
+# End abund
+endabund_gr_lm <- lm(log(end_abund_corr) ~ Soil, 
+                 data=growth_death_asv[growth_death_asv$type=="growth",])
+hist(resid(endabund_gr_lm)) # normal
+plot(predict(endabund_gr_lm), resid(endabund_gr_lm)) # homoskedastic
+summary(endabund_gr_lm)
+
+# Multiple test correction
+growth_asv_padj <- p.adjust(c(summary(g_gr_lm)$coefficients[2,4], lag_gr_kw$p.value, n16S_gr_kw$p.value, 
+                              summary(chabund_gr_lm)$coefficients[2,4], 
+                              summary(startabund_gr_lm)$coefficients[2,4], summary(endabund_gr_lm)$coefficients[2,4]), 
+                            method = "holm", n=6)
+
+growth_asv_padj
 ```
 
+Death ASV-level:
 
+```{r}
+# generation time
+g_de_lm <- lm(log(g) ~ Soil, data=growth_death_asv[growth_death_asv$type=="death",])
+hist(resid(g_de_lm)) # normal
+plot(predict(g_de_lm), resid(g_de_lm)) # homoskedastic
+summary(g_de_lm)
+
+# start day
+lag_de_lm <- lm(start_day ~ Soil, data=growth_death_asv[growth_death_asv$type=="death",])
+hist(resid(lag_de_lm)) # non-normal
+plot(predict(lag_de_lm), resid(g_de_lm)) # homoskedastic
+# Use non-parametric test
+lag_de_kw <- kruskal.test(start_day ~ Soil, data=growth_death_asv[growth_death_asv$type=="death",])
+
+# n16S
+n16S_de_lm <- lm(n16S ~ Soil, data=growth_death_asv[growth_death_asv$type=="death",])
+hist(resid(n16S_de_lm)) # non-normal even w/log transform
+plot(predict(n16S_de_lm), resid(g_de_lm)) # homoskedastic
+# Use non-parametric test
+n16S_de_kw <- kruskal.test(n16S ~ Soil, data=growth_death_asv[growth_death_asv$type=="death",])
+
+# Change abund
+chabund_de_lm <- lm(log(abs(change_abund_corr)) ~ Soil, 
+                 data=growth_death_asv[growth_death_asv$type=="death",])
+hist(resid(chabund_de_lm)) # normal
+plot(predict(chabund_de_lm), resid(chabund_de_lm)) # homoskedastic w/ or w/o log transform
+summary(chabund_de_lm)
+
+# Start abund
+startabund_de_lm <- lm(log(start_abund_corr) ~ Soil, 
+                 data=growth_death_asv[growth_death_asv$type=="death",])
+hist(resid(startabund_de_lm)) # normal
+plot(predict(startabund_de_lm), resid(startabund_de_lm)) # homoskedastic
+summary(startabund_de_lm)
+
+# End abund
+endabund_de_lm <- lm(log(end_abund_corr) ~ Soil, 
+                 data=growth_death_asv[growth_death_asv$type=="death",])
+hist(resid(endabund_de_lm)) # normal
+plot(predict(endabund_de_lm), resid(endabund_de_lm)) # homoskedastic
+summary(endabund_de_lm)
+
+# Multiple test correction
+death_asv_padj <- p.adjust(c(summary(g_de_lm)$coefficients[2,4], lag_de_kw$p.value, n16S_de_kw$p.value, 
+                              summary(chabund_de_lm)$coefficients[2,4], 
+                              summary(startabund_de_lm)$coefficients[2,4], summary(endabund_de_lm)$coefficients[2,4]), 
+                            method = "holm", n=6)
+
+death_asv_padj
+```
+
+# SCRAP
 
 Death:
 
