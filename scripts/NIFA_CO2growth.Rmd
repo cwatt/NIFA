@@ -1,0 +1,446 @@
+---
+title: "NIFA - Co2 vs growth"
+author: "Cassandra Wattenburger"
+date: "4/17/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+```{r}
+library(tidyverse)
+
+sessionInfo()
+
+rm(list=ls())
+```
+
+# Import data
+
+```{r}
+# Respiration
+resp <- readRDS("../data_intermediate/NIFA_repiration.rds")
+
+# Normalized abundances
+abund <- readRDS("../data_intermediate/NIFA_normalized.rds")
+
+# Growth
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds") %>% 
+  as.tibble()
+
+# Paprica estimates
+pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+
+# Metadata
+meta <- read_tsv("../NIFA_metadata.tsv")
+```
+
+Reformat:
+
+```{r}
+# Only keep time series with growth estimates
+abund_gr <- abund %>% 
+  inner_join(growth) %>% 
+  filter(!is.na(ASV) & Isotope=="12C") %>% 
+  left_join(pap) %>%
+  mutate(norm_abund_corr = norm_abund/n16S) %>% 
+  select(ASV, Soil, Replicate, Day, norm_abund, norm_abund_corr, g, start_day, end_day, slope, yint, n16S)
+
+abund_gr
+
+# Add Replicate info to respiration data
+ucosm_reps <- select(meta, Microcosm, Replicate)
+resp <- inner_join(resp, ucosm_reps) 
+```
+
+# Total growing community abundances
+
+```{r}
+# Whole community (uncorrected)
+abund %>% 
+  group_by(Soil, Replicate, Day) %>% 
+  summarize(norm_abund = sum(norm_abund)) %>% # sum ASV abundances
+  ungroup() %>% 
+  ggplot(aes(x=Day, y=norm_abund, color=Soil)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  theme_test()
+
+# Growing community
+abund_gr %>% 
+  group_by(Soil, Replicate, Day) %>% 
+  summarize(norm_abund = sum(norm_abund_corr)) %>% # sum ASV abundances
+  ungroup() %>% 
+  ggplot(aes(x=Day, y=norm_abund, color=Soil)) +
+  geom_point() +
+  geom_smooth() +
+  theme_test()
+```
+
+# Respiration rates
+
+```{r}
+# Time (days) elapsed per time point
+time_steps <- data.frame(time_step = c(0, rep(1, 11), rep(2, 8), 3),
+                         Day = sort(unique(resp$Day)))
+
+# Calculate respiration rate mg/days
+resp_rate <- resp %>% 
+  left_join(time_steps) %>% 
+  filter(Day != 0) %>% 
+  mutate(resp_rate_c = mg_c / time_step,
+         resp_rate_co2 = mg_co2 / time_step)
+```
+
+Visulize:
+
+```{r}
+resp_rate %>% 
+  ggplot(aes(x=Day, y=resp_rate_c, color=Measurement)) +
+  geom_point() +
+  facet_wrap(Litter~Soil) +
+  labs(title="Respiration rate (mg C)") +
+  theme_test()
+
+resp_rate %>% 
+  filter(Litter=="litter") %>% 
+  ggplot(aes(x=Day, y=resp_rate_c, color=Measurement)) +
+  geom_point() +
+  geom_smooth() +
+  facet_wrap(~Soil) +
+  labs(title="Respiration rate (mg C)") +
+  theme_test()
+```
+
+#WIP Proportions labelled CO2
+
+```{r}
+resp_total <- resp %>% 
+  filter(Litter=="litter") %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(mg_co2_total = sum(mg_co2),
+            mg_c_total = sum(mg_c))
+  
+
+resp_prop <- resp %>% 
+  filter(Litter=="litter") %>% 
+  group_by(Soil, Replicate, Measurement) %>% 
+  summarize(mg_co2 = sum(mg_co2),
+            mg_c = sum(mg_c)) %>% # sum across all days
+  ungroup() %>% 
+  inner_join(resp_total) %>% 
+  mutate(prop_co2 = mg_co2/mg_co2_total,
+         prop_c = mg_c/mg_c_total)
+
+resp_prop
+```
+
+Visualize:
+
+```{r}
+resp_prop %>% 
+  ggplot(aes(x=Soil, y=prop_co2, color=Measurement)) +
+  geom_point() +
+  theme_test()
+```
+
+# Community weighted g
+
+Based on abundance at given time point.
+
+```{r}
+# Calculate weighted g
+weighted_g <- data.frame()
+for (s in unique(abund_gr$Soil)) {
+  for (r in unique(abund_gr[abund_gr$Soil==s,]$Replicate)) {
+    for (d in unique(abund_gr[abund_gr$Soil==s & abund_gr$Replicate,]$Day)) {
+      data_srd <- filter(abund_gr, Soil==s & Replicate==r & Day==d) %>%
+        filter(start_day <= d & end_day >= d) # include only ASVs that grew on the given day
+      weighted_mean <- weighted.mean(data_srd$g, data_srd$norm_abund_corr) # weight by corrected abundance
+      this_row <- bind_cols(Soil=s, Replicate=r, Day=d, weighted_g=weighted_mean)
+      weighted_g <- bind_rows(weighted_g, this_row)
+    }
+  }
+}
+
+weighted_g
+```
+
+Visualize:
+
+```{r}
+weighted_g %>% 
+  ggplot(aes(x=Day, y=weighted_g, color=Soil)) +
+  geom_point() +
+  geom_smooth() +
+  labs(y="Growing community weighted generation time (days)") +
+  theme_test()
+```
+
+Statistics:
+
+```{r}
+# Compare soils
+weightedg_lm <- lm(log(weighted_g) ~ Soil, data=weighted_g)
+hist(resid(weightedg_lm)) # normal
+plot(predict(weightedg_lm), resid(weightedg_lm)) # homoskedastic
+summary(weightedg_lm)
+```
+
+
+# Respiration rate x weighted growth rate:
+
+```{r}
+weightedg_resprate <- inner_join(weighted_g, resp_rate) %>% 
+  filter(Litter=="litter") %>% # remove samples without litter added
+  select(everything(), -Litter)
+
+weightedg_resprate
+```
+
+Visualize:
+
+```{r}
+# Labelled
+weightedg_resprate %>% 
+  filter(Measurement=="mz45") %>%  # labelled CO2
+  group_by(Soil, Day) %>%  # average across replicates
+  summarize(weighted_g = mean(weighted_g, na.rm=TRUE),
+            resp_rate_co2 = mean(resp_rate_co2, na.rm=TRUE)) %>% 
+  ungroup() %>% 
+  ggplot(aes(y=resp_rate_co2, x=weighted_g, color=Soil)) +
+  geom_point() +
+  geom_smooth(method="lm", linetype=2) +
+  theme_test() +
+  labs(y="Respiration rate, mz45 (mgCO2/day)", x="w.mean g")
+
+# Unlabelled
+weightedg_resprate %>% 
+  filter(Measurement=="mz44") %>%  # unlabelled CO2
+  group_by(Soil, Day) %>%  # average across replicates
+  summarize(weighted_g = mean(weighted_g, na.rm=TRUE),
+            resp_rate_co2 = mean(resp_rate_co2, na.rm=TRUE)) %>% 
+  ungroup() %>% 
+  ggplot(aes(y=resp_rate_co2, x=weighted_g, color=Soil)) +
+  geom_point() +
+  geom_smooth(method="lm", linetype=2) +
+  theme_test() +
+  labs(y="Respiration rate, mz44 (mgCO2/day)", x="w.mean g")
+```
+
+## Statistics
+
+```{r}
+# Average replicates
+wgrr_avg <- weightedg_resprate %>%
+  group_by(Soil, Day, Measurement) %>%  # average across replicates
+  summarize(weighted_g = mean(weighted_g, na.rm=TRUE),
+            resp_rate_co2 = mean(resp_rate_co2, na.rm=TRUE)) %>% 
+  ungroup()
+
+# Labelled
+# Ag
+wgrr_ag45_pearson <- cor.test(wgrr_avg[wgrr_avg$Measurement=="mz45" & wgrr_avg$Soil=="Ag",]$resp_rate_co2,
+                         wgrr_avg[wgrr_avg$Measurement=="mz45" & wgrr_avg$Soil=="Ag",]$weighted_g, method="pearson")
+wgrr_ag45_pearson
+# Meadow
+wgrr_mead45_pearson <- cor.test(wgrr_avg[wgrr_avg$Measurement=="mz45" & wgrr_avg$Soil=="Meadow",]$resp_rate_co2,
+                         wgrr_avg[wgrr_avg$Measurement=="mz45" & wgrr_avg$Soil=="Meadow",]$weighted_g, method="pearson")
+wgrr_mead45_pearson
+
+# Unlabelled
+# Ag
+wgrr_ag44_pearson <- cor.test(wgrr_avg[wgrr_avg$Measurement=="mz44" & wgrr_avg$Soil=="Ag",]$resp_rate_co2,
+                         wgrr_avg[wgrr_avg$Measurement=="mz44" & wgrr_avg$Soil=="Ag",]$weighted_g, method="pearson")
+wgrr_ag44_pearson
+# Meadow
+wgrr_mead44_pearson <- cor.test(wgrr_avg[wgrr_avg$Measurement=="mz44" & wgrr_avg$Soil=="Meadow",]$resp_rate_co2,
+                         wgrr_avg[wgrr_avg$Measurement=="mz44" & wgrr_avg$Soil=="Meadow",]$weighted_g, method="pearson")
+wgrr_mead44_pearson
+
+# Multiple test correction
+p.adjust(p=c(wgrr_ag45_pearson$p.value, wgrr_mead45_pearson$p.value, wgrr_ag44_pearson$p.value, wgrr_mead44_pearson$p.value),
+           method="holm", n=4)
+```
+
+# Growth efficiency
+
+Proxy for CUE using generation time, period of time, normalized abundance, and respiration rate.
+
+N0 = normalized abundance of taxon at start of time interval (not log transformed)
+g = generation time of taxon (days)
+t = days in time frame
+r = mg CO2/day, respiration rate
+
+n = t/g, number of generations
+Nt = N0*2^n, biomass at end of time frame
+deltaN = Nt - N0, change in biomass
+r*t = the mg CO2 produced in that time frame
+
+growth efficiency = ΣdeltaN/(r*t), ie sum of gained abundance divided by mg CO2 produced.
+
+## Impute abundances
+
+Based on linear growth estimate, using imputed data to prevent bias from drop outs.
+
+```{r}
+# Respiration headspace sampling time points
+resp_tps <- unique(resp$Day) %>% 
+  data.frame(day=.) %>% 
+  arrange(day) %>% 
+  add_column(tp=c(1:nrow(.)))
+
+# Impute abundance
+abund_impute <- abund_gr %>% 
+  mutate(growing = if_else(Day >= start_day & Day <= end_day, "yes", "no"),  # is it growing during given time interval?
+         impute_abund = if_else(growing=="yes", slope*Day+yint, NA), # impute using linear model, creates ln imputed abund
+         impute_abund_corr = exp(impute_abund)/n16S, # un-ln and correct for n16S
+         label = paste0(Soil, "_", Replicate, "_", ASV)) # add label
+
+abund_impute
+
+# Calculate change in imputed abundance for each headspace time interval
+resp_intends <- resp_tps[2:nrow(resp_tps),]
+chabund_df <- data.frame()
+for (l in unique(abund_impute$label)) { # for each time series
+  #print(l)
+  data_l <- filter(abund_impute, label==l) %>%
+    arrange(Day) %>% 
+    filter(growing=="yes") %>% 
+    select(label, day=Day, impute_abund_corr)
+  
+  for (d in resp_intends$day) { # for each headspace sampling day (not including day 0)
+    start_int <- resp_tps[resp_tps[resp_tps$day==d,]$tp-1,]$day
+    #print(paste0("Start day " , start_int))
+    #print(paste0("End day ", d))
+    
+    # Growing on start and end days of time interval
+    if (start_int %in% data_l$day & d %in% data_l$day) {
+      #print("Growing on start and end days of time interval")
+      abund1 <- NULL; abund2 <- NULL; chabund <- NULL
+      abund1 <- data_l %>% 
+        filter(day==start_int) %>% 
+        select(impute_abund_corr) %>% 
+        as.numeric()
+      abund2 <- data_l %>% 
+        filter(day==d) %>% 
+        select(impute_abund_corr) %>% 
+        as.numeric()
+      chabund <- abund2-abund1
+      this_row <- data.frame(label=l, start=start_int, end=d, chabund)
+      chabund_df <- bind_rows(chabund_df, this_row)
+      #print(chabund)
+    }
+    # Not growing on start or end
+    else {
+      # Growing on start day but not end day of time interval
+      ## this means either ended growth on start day or stopped growth on an intermediate tp
+      if (start_int %in% data_l$day) {
+        #print("Growing on start day but not end day of time interval")
+        abund1 <- NULL; abund2 <- NULL; chabund <- NULL
+        abund1 <- data_l %>% 
+          filter(day==start_int) %>% 
+          select(impute_abund_corr) %>% 
+          as.numeric()
+        abund2 <- data_l %>% 
+          summarize(max(impute_abund_corr)) %>% # growth ended before end of time interval, so largest abundance is terminal
+          as.numeric()
+        chabund <- abund2 - abund1
+        this_row <- data.frame(label=l, start=start_int, end=d, chabund)
+        chabund_df <- bind_rows(chabund_df, this_row)
+        #print(chabund)
+      }
+      # Growing on end day of time interval but not start day
+      ## this means growth likely started at the end of the time interval or on an intermediate time point
+      else if (d %in% data_l$day) {
+        #print("Growing on end day of time interval but not start day")
+        abund1 <- NULL; abund2 <- NULL; chabund <- NULL
+        abund1 <- data_l %>% 
+          summarize(min(impute_abund_corr)) %>%  # growth started after start of time interval so minimum abundance is start
+          as.numeric()
+        abund2 <- data_l %>% 
+          filter(day==d) %>% 
+          select(impute_abund_corr) %>% 
+          as.numeric()
+        chabund <- abund2 - abund1
+        this_row <- data.frame(label=l, start=start_int, end=d, chabund)
+        chabund_df <- bind_rows(chabund_df, this_row)
+        #print(chabund)
+      }
+      # Didn't grow at all during time interval
+      else {
+        #print("Didn't grow at all during time interval")
+        abund1 <- NULL; abund2 <- NULL; chabund <- NULL
+        next
+      }
+    }
+  }
+}
+
+meta_impute <- abund_impute %>% 
+  select(label, Soil, Replicate, ASV) %>% 
+  unique()
+
+# Sum across ASVs
+chabund_sum <- chabund_df %>%
+  left_join(meta_impute) %>% 
+  group_by(Soil, Replicate, start, end) %>% 
+  summarize(chabund = sum(chabund)) %>% 
+  ungroup()
+
+chabund_sum
+```
+
+## Calculate growth eff.
+
+```{r}
+# Add replicate numbers to resp
+meta2 <- meta %>% 
+  select(Microcosm, Soil, Replicate) %>% 
+  unique()
+
+resp2 <- left_join(resp, meta2)
+
+# Calculate
+greff_df <- chabund_sum %>% 
+  select(Soil, Replicate, Day=end, chabund) %>% 
+  inner_join(resp2) %>% 
+  unique() %>% 
+  filter(Litter=="litter") %>% 
+  select(Soil, Replicate, Day, chabund, measurement=Measurement, mg_co2) %>% 
+  group_by(Soil, Replicate, Day, chabund) %>% # sum labelled and unlabelled respiration
+  summarize(mg_co2 = sum(mg_co2)) %>% 
+  ungroup() %>% 
+  mutate(greff = chabund/mg_co2)
+
+greff_df
+```
+
+Visualize:
+
+```{r}
+greff_df %>% 
+  ggplot(aes(x=Day, y=log(greff), color=Soil)) +
+  geom_point() +
+  geom_smooth() +
+  theme_test()
+```
+
+# PIN: How does this curve compare with shifts in incorporation profiles?
+
+## Statistics
+
+```{r}
+greff_lm <- lm(log(greff) ~ Soil+Day+Soil*Day, data=greff_df)
+hist(resid(greff_lm)) # not normal w/log transform
+plot(predict(greff_lm), resid(greff_lm)) # homoskedastic w/log transform
+# Switch to non-parametric test on log transformed data
+kruskal.test(log(greff) ~ Soil, data=greff_df)
+kruskal.test(log(greff) ~ Day, data=greff_df)
+```
+
+

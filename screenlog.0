@@ -5184,3 +5184,4 @@ Shutdown this notebook server (y/[n])? No answer for 5s: resuming operation...
 [32m[I 13:19:21.727 NotebookApp][m Kernel started: 052d7b95-7d23-4123-9b42-9e8f7240b952, name: python3
 [32m[I 13:21:21.784 NotebookApp][m Saving file at /scripts/NIFA2.dada2.pipeline.ipynb
 [32m[I 17:25:02.178 NotebookApp][m Starting buffering for 052d7b95-7d23-4123-9b42-9e8f7240b952:8d49601d360f4b0eb057fe02c240909c
+[32m[I 12:57:40.297 NotebookApp][m Starting buffering for 052d7b95-7d23-4123-9b42-9e8f7240b952:f40f2b2fe4684d82bce194f097e878c8

@@ -71,11 +71,9 @@ resp_total %>%
   theme_test()
 ```
 
-# BOOKMARK Greff?
+## Statistics
 
-Statistics:
-
-With sample 185 and 193 mz 44 (high outliers)
+With sample 185 and 193 mz 44 (high outliers):
 
 ```{r}
 # Litter
@@ -135,7 +133,10 @@ plot(predict(nolittermz44_lm), resid(nolittermz44_lm)) # heteroskedastic, worse 
 t.test(mg ~ Soil, data=filter(resp_totalrm, Litter=="no litter" & Measurement=="mz44" & molecule=="c"), var.equal=FALSE)
 ```
 
-Not sure what to think. There seems to be a huge amount of variability in the agricultural soil, which decreases the power of the tests. What is more representative of the ag soil, the high outliers or the lower more consistent measurements?
+Not sure what to think. There seems to be a huge amount of variability in the agricultural soil, which hugely decreases the power of the tests.
+
+
+
 
 # SCRAP
 

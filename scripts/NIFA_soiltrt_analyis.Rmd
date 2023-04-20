@@ -17,6 +17,7 @@ rm(list=ls())
 
 library("tidyverse")
 library("phyloseq")
+library("vegan")
 library("ape")
 
 sessionInfo()
@@ -125,6 +126,18 @@ richness %>%
   geom_point() +
   geom_smooth(method="lm", linetype=2, lpah=0.5) +
   theme_test()
+```
+
+### Statistics
+
+```{r}
+# Soils
+rich_lm <- lm(log(richness)+Day+log(richness)*Day ~ Soil, data=richness)
+hist(resid(rich_lm)) # non-normal
+plot(predict(rich_lm), resid(rich_lm)) # homoskedastic with log transform
+# Non-parametric tests
+kruskal.test(log(richness) ~ Soil, data=richness)
+kruskal.test(richness ~ Day, data=richness)
 ```
 
 Total unique ASVs with growht/death estimates:
@@ -246,6 +259,8 @@ growth_soilphytots %>%
 
 ## Beta diversity
 
+Overall:
+
 ```{r}
 set.seed(2023)
 
@@ -279,6 +294,12 @@ plot_ordination(physeq2, nmds_wuni, color="Day", shape="Soil") +
 plot_ordination(physeq2, nmds_uni, color="Day", shape="Soil") +
   labs(title="Unweighted unifrac") +
   theme_test() 
+```
+
+### Statistics
+
+```{r}
+adonis(wuni_dist~Soil+Day+Soil*Day, data=data.frame(sample_data(physeq2)), permutations=999)
 ```
 
 # Community-level
@@ -545,6 +566,8 @@ death_com_padj
 
 # ASV-level
 
+## Metric vs soil
+
 ```{r}
 # Average across replicates per ASV
 growth_death_asv <- growth_death %>% 
@@ -688,7 +711,7 @@ growth_death_asv %>%
       strip.background = element_blank())
 ```
 
-## Statistics
+### Statistics
 
 Growth ASV-level:
 
@@ -795,6 +818,117 @@ death_asv_padj <- p.adjust(c(summary(g_de_lm)$coefficients[2,4], lag_de_kw$p.val
 
 death_asv_padj
 ```
+
+## Metric vs metric
+
+Based largely on results from previously experiments. Want to see if they replicate under different conditions.          
+
+Growth change abund vs death change abund:
+
+```{r}
+growth_death_asv %>% 
+  select(Soil, ASV, type, change_abund_corr) %>% 
+  pivot_wider(names_from=type, values_from=change_abund_corr) %>% 
+  filter(!(is.na(death) | is.na(growth))) %>% # only taxa with a growth and death estimate
+  ggplot(aes(x=log(growth), y=log(abs(death)), color=Soil)) +
+  geom_point() +
+  geom_smooth(method="lm", linetype=2) +
+  labs(x="ln deltaNg", y="ln deltaNd") +
+  theme_test()
+```
+
+Growth rate vs change abund:
+
+```{r}
+growth_death_asv %>%
+  select(Soil, ASV, type, g, change_abund_corr) %>% 
+  filter(type=="growth") %>% 
+  ggplot(aes(x=log(g), y=log(change_abund_corr), color=Soil)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  labs(x="ln generation time", y="ln deltaNg") +
+  theme_test()
+```
+
+Death rate vs change abund:
+
+```{r}
+growth_death_asv %>%
+  select(Soil, ASV, type, g, change_abund_corr) %>% 
+  filter(type=="death") %>% 
+  ggplot(aes(x=log(g), y=log(abs(change_abund_corr)), color=Soil)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  labs(x="ln halving time", y="ln deltaNd") +
+  theme_test()
+```
+
+### Statistics
+
+Pearson correlations
+
+DeltaNg vs deltaNd:
+
+```{r}
+# Reformat
+growth_death_deltaN <- growth_death_asv %>% 
+  select(Soil, ASV, type, change_abund_corr) %>% 
+  pivot_wider(names_from=type, values_from=change_abund_corr) %>% 
+  filter(!(is.na(death) | is.na(growth)))
+
+# Correlate
+# Ag
+cor.test(log(growth_death_deltaN[growth_death_deltaN$Soil=="Ag",]$growth), log(abs(growth_death_deltaN[growth_death_deltaN$Soil=="Ag",]$death)), method="pearson")
+# Meadow
+cor.test(log(growth_death_deltaN[growth_death_deltaN$Soil=="Meadow",]$growth), log(abs(growth_death_deltaN[growth_death_deltaN$Soil=="Meadow",]$death)), method="pearson")
+```
+
+G vs deltaNg:
+
+```{r}
+# Reformat
+growth_gdeltaNg <- growth_death_asv %>%
+  select(Soil, ASV, type, g, change_abund_corr) %>% 
+  filter(type=="growth")
+
+# Correlate
+# Ag
+cor.test(log(growth_gdeltaNg[growth_gdeltaNg$Soil=="Ag",]$g), log(growth_gdeltaNg[growth_gdeltaNg$Soil=="Ag",]$change_abund_corr), method="pearson")
+# Meadow
+cor.test(log(growth_gdeltaNg[growth_gdeltaNg$Soil=="Meadow",]$g), log(growth_gdeltaNg[growth_gdeltaNg$Soil=="Meadow",]$change_abund_corr), method="pearson")
+```
+
+h vs deltaNd:
+
+```{r}
+# Reformat
+growth_hdeltaNd <- growth_death_asv %>%
+  select(Soil, ASV, type, g, change_abund_corr) %>% 
+  filter(type=="death")
+
+# Correlate
+# Ag
+cor.test(log(growth_hdeltaNd[growth_hdeltaNd$Soil=="Ag",]$g), log(abs(growth_hdeltaNd[growth_hdeltaNd$Soil=="Ag",]$change_abund_corr)), method="pearson")
+# Meadow
+cor.test(log(growth_hdeltaNd[growth_hdeltaNd$Soil=="Meadow",]$g), log(abs(growth_hdeltaNd[growth_hdeltaNd$Soil=="Meadow",]$change_abund_corr)), method="pearson")
+```
+
+## Soil ASV overlap
+
+```{r}
+ag_asvs <- growth %>% filter(Soil=="Ag") %>% select(ASV) %>% unique() %>% as.list()
+mead_asvs <- growth %>% filter(Soil=="Meadow") %>% select(ASV) %>% unique() %>% as.list()
+
+# Number of ASVs
+length(ag_asvs$ASV)
+length(mead_asvs$ASV)
+length(intersect(ag_asvs$ASV, mead_asvs$ASV))
+
+# Proportions
+length(intersect(ag_asvs$ASV, mead_asvs$ASV))/length(ag_asvs$ASV)
+length(intersect(ag_asvs$ASV, mead_asvs$ASV))/length(mead_asvs$ASV)
+```
+
 
 # SCRAP
 
