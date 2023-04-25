@@ -443,4 +443,9 @@ kruskal.test(log(greff) ~ Soil, data=greff_df)
 kruskal.test(log(greff) ~ Day, data=greff_df)
 ```
 
+Export growth efficiency calculations:
+
+```{r, eval=fALSE}
+saveRDS(greff_df, file="../data_intermediate/NIFA_greff.rds")
+```
 

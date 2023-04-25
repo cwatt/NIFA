@@ -1,0 +1,390 @@
+---
+title: "Untitled"
+author: "Cassandra Wattenburger"
+date: "4/25/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+## Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+
+sessionInfo()
+```
+
+# Import data
+
+```{r}
+## Clusters
+clust <- readRDS("../data_intermediate/NIFA_clusters.rds") %>% 
+  mutate(cluster = as.character(cluster))
+
+## Growth
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+
+## Death
+death <- readRDS("../data_intermediate/NIFA_dests_final_ind.rds")
+
+## Paprica estimates
+pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+
+## Incorporation profiles
+incorp <- readRDS("../data_intermediate/NIFA_incorp_profiles.rds")
+
+## Normalized abundances
+abund <- readRDS("../data_intermediate/NIFA_norm_prepped.rds")
+
+# Growth efficiency
+greff <- readRDS("../data_intermediate/NIFA_greff.rds")
+```
+
+Reformat and combine:
+
+```{r}
+## Growth estimates
+growth <- inner_join(growth, pap) %>% ## add paprica predictions
+  mutate(start_abund_corr = start_abund/n16S, ## correct for 16S copy number
+         end_abund_corr = end_abund/n16S,
+         change_abund_corr = change_abund/n16S) %>% 
+  select(everything(), -c(start_abund, end_abund, change_abund)) %>% 
+  inner_join(clust) ## add cluster memberships
+
+## Death estimates
+death <- inner_join(death, pap) %>% ## add paprica predictions
+  mutate(start_abund_corr = start_abund/n16S, ## correct for 16S copy number
+         end_abund_corr = end_abund/n16S,
+         change_abund_corr = change_abund/n16S) %>% 
+  select(everything(), -c(start_abund, end_abund, change_abund)) %>% 
+  inner_join(clust) ## add cluster memberships
+
+## Normalized abundances
+abund <- abund %>% 
+  mutate(ASV = gsub("Ag[1-3]_|Meadow[1-3]_(.+)", "\\1", label)) %>% 
+  inner_join(pap) %>% ## add paprica predictions
+  filter(Isotope=="12C") %>% 
+  select(label, Soil, Replicate, ASV, Day, norm_abund, n16S) %>% 
+  mutate(norm_abund_corr = norm_abund/n16S) %>% ## correct for 16S copy number
+  select(everything(), -c(norm_abund, n16S)) %>% 
+  inner_join(clust) ## add cluster memberships
+
+## Incorporation profiles
+incorp <- incorp %>% 
+  right_join(clust)
+```
+
+# Cluster characteristics
+
+## Day of first incorporation
+
+Number of substrates incorporated across ecosystems:
+
+```{r}
+incorp %>% 
+  ggplot(aes(x=cluster, y=substrate_num, color=cluster)) +
+  geom_violin() +
+  geom_jitter(height=0.2) +
+  geom_hline(yintercept=c(1, 2, 3, 4, 5), linetype=2, color="gray") +
+  theme_test()
+
+incorp %>% 
+  ggplot(aes(x=cluster, y=substrate_num, color=cluster)) +
+  geom_violin() +
+  geom_jitter(height=0.2) +
+  geom_hline(yintercept=c(1, 2, 3, 4, 5), linetype=2, color="gray") +
+  facet_wrap(~Soil) +
+  theme_test()
+```
+
+Histograms:
+
+```{r}
+incorp %>% 
+  group_by(Soil, cluster, substrate_num) %>% 
+  summarize(count=n()) %>% 
+  ggplot(aes(x=substrate_num, y=count, fill=Soil)) +
+  geom_col(position="dodge") +
+  facet_wrap(~cluster) +
+  theme_test()
+```
+
+Most common substrate incorporated:
+
+```{r}
+incorp %>% 
+  select(ASV:xylose, cluster) %>% 
+  pivot_longer(cols=cellulose:xylose, names_to="substrate", values_to="labelled") %>% 
+  filter(labelled=="yes") %>% 
+  group_by(Soil, cluster, substrate) %>% 
+  summarize(total=n()) %>% 
+  ggplot(aes(x=substrate, y=total, fill=cluster)) +
+  geom_col(position="dodge") +
+  facet_wrap(cluster~Soil) +
+  theme_test()
+```
+
+## Day of first use
+
+```{r}
+incorp %>% 
+  select(ASV, Soil, cluster, cellulose_firstday:xylose_firstday) %>% 
+  pivot_longer(cols=cellulose_firstday:xylose_firstday, names_to="substrate", values_to="first_day") %>% 
+  mutate(substrate = gsub("([a-z]+)_firstday", "\\1", substrate)) %>% 
+  filter(!is.na(first_day)) %>% # remove non-incorporators
+  group_by(Soil, cluster, substrate, first_day) %>% 
+  summarize(count=n()) %>% 
+  ggplot(aes(x=first_day, y=count, fill=cluster)) +
+  geom_col(position="dodge") +
+  facet_wrap(substrate~Soil) +
+  theme_test()
+```
+
+# Soils comparisons
+
+## Cluster total abundances
+
+Calculate cluster sums:
+
+```{r}
+## Total abundance of each cluster over time
+abund_total <- abund %>% 
+  group_by(Soil, Day, Replicate, cluster) %>% 
+  summarize(abund_total = sum(norm_abund_corr)) %>% 
+  ungroup()
+abund_total
+```
+
+Visualize:
+
+```{r}
+## Visualize
+abund_total %>% 
+  ggplot(aes(x=Day, y=abund_total, color=cluster)) +
+  geom_point() +
+  geom_smooth(aes(color=cluster)) +
+  facet_wrap(~Soil) +
+  theme_test()
+
+abund_total %>% 
+  ggplot(aes(x=Day, y=log(abund_total), color=cluster)) +
+  geom_point() +
+  geom_smooth(aes(color=cluster)) +
+  facet_wrap(~Soil) +
+  theme_test()
+```
+
+Average across day:
+
+```{r}
+abund_total_day <- abund_total %>%
+  group_by(Soil, Replicate, cluster) %>% 
+  summarize(abund_total = mean(abund_total)) %>% 
+  ungroup() %>% 
+  mutate(cluster = as.character(cluster))
+abund_total_day
+```
+
+Visualize:
+
+```{r}
+abund_total_day %>% 
+  ggplot(aes(x=Soil, y=abund_total, color=cluster)) +
+  geom_point() +
+  theme_test()
+
+abund_total_day %>% 
+  ggplot(aes(x=Soil, y=log(abund_total), color=cluster)) +
+  geom_point() +
+  theme_test()
+```
+
+### Statistics
+
+On day-averaged data:
+
+```{r}
+abundtot_lm <- lm(abund_total ~ Soil + cluster + Soil*cluster, data=abund_total_day)
+hist(resid(abundtot_lm)) ## normal
+plot(predict(abundtot_lm), resid(abundtot_lm)) ## heteroskedastic
+## This is trickey because log removes normality but fixes heteroskedasticity, and viceversa
+## I'm going to use welch anova on the heteroskeastic data, because it seems to perform well in cases like this: https://scholarscompass.vcu.edu/etd/3985/
+clustag_wanova <- oneway.test(abund_total ~ cluster, data=filter(abund_total_day, Soil=="Ag"), var.equal=FALSE)
+clustmead_wanova <- oneway.test(abund_total ~ cluster, data=filter(abund_total_day, Soil=="Meadow"), var.equal=FALSE)
+## Contrasts within soils
+ag12_welch <- t.test(abund_total ~ cluster, data=filter(abund_total_day, Soil=="Ag" & cluster %in% c(1,2)), var.equal=FALSE)
+ag13_welch <- t.test(abund_total ~ cluster, data=filter(abund_total_day, Soil=="Ag" & cluster %in% c(1,3)), var.equal=FALSE)
+ag23_welch <- t.test(abund_total ~ cluster, data=filter(abund_total_day, Soil=="Ag" & cluster %in% c(2,3)), var.equal=FALSE)
+mead12_welch <- t.test(abund_total ~ cluster, data=filter(abund_total_day, Soil=="Meadow" & cluster %in% c(1,2)), var.equal=FALSE)
+mead13_welch <- t.test(abund_total ~ cluster, data=filter(abund_total_day, Soil=="Meadow" & cluster %in% c(1,3)), var.equal=FALSE)
+mead23_welch <- t.test(abund_total ~ cluster, data=filter(abund_total_day, Soil=="Meadow" & cluster %in% c(2,3)), var.equal=FALSE)
+## P adjustment
+p.adjust(p=c(ag12_welch$p.value, ag13_welch$p.value, ag23_welch$p.value, mead12_welch$p.value, mead13_welch$p.value, mead23_welch$p.value),
+         method="holm", n=6)
+```
+
+## Cluster proportions
+
+Proportion of total abundance per soil
+
+```{r}
+## Calculate proportions
+abund_total_overall <- abund_total %>% 
+  group_by(Soil, Day, Replicate) %>% 
+  summarize(overall_total = sum(abund_total))
+
+abund_prop <- left_join(abund_total, abund_total_overall) %>% 
+  mutate(abund_prop = abund_total/overall_total,
+         cluster = as.character(cluster))
+abund_prop
+```
+
+Visualize:
+
+```{r}
+abund_prop %>% 
+  ggplot(aes(x=Day, y=abund_prop, color=cluster)) +
+  geom_point() + 
+  facet_wrap(~Soil) +
+  geom_smooth(aes(color=cluster)) +
+  theme_test()
+```
+
+### WIP Statistics
+
+## Cluster x change abundances
+
+```{r}
+## Calculate change in abundance for each cluster member
+clust_chabund <- growth %>% 
+  group_by(Soil, ASV, cluster) %>% ## average across replicates
+  summarize(chabund = mean(change_abund_corr)) %>% 
+  ungroup()
+
+## Visualize
+clust_chabund %>% 
+  ggplot(aes(y=log(chabund), x=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(alpha=0.5) +
+  facet_wrap(~cluster) +
+  theme_test()
+
+clust_chabund %>% 
+  ggplot(aes(y=log(chabund), x=cluster, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(alpha=0.5) +
+  facet_wrap(~Soil) +
+  theme_test()
+```
+
+#### Statistics
+
+```{r}
+## Overall
+clustchabund_lm <- lm(log(chabund) ~ Soil + cluster + Soil*cluster, data=clust_chabund)
+hist(resid(clustchabund_lm)) ## normal af
+plot(predict(clustchabund_lm), resid(clustchabund_lm)) ## homoskedastic
+anova(clustchabund_lm)
+## Contrasts
+## Cluster 1
+clust1_lm <- lm(log(chabund) ~ Soil, data=filter(clust_chabund, cluster==1))
+hist(resid(clust1_lm))
+plot(predict(clust1_lm), resid(clust1_lm))
+summary(clust1_lm)
+## Cluster 2
+clust2_lm <- lm(log(chabund) ~ Soil, data=filter(clust_chabund, cluster==2))
+hist(resid(clust2_lm))
+plot(predict(clust2_lm), resid(clust2_lm))
+summary(clust2_lm)
+## cluster 3
+clust3_lm <- lm(log(chabund) ~ Soil, data=filter(clust_chabund, cluster==3))
+hist(resid(clust3_lm))
+plot(predict(clust3_lm), resid(clust3_lm))
+summary(clust3_lm)
+## P adjustment
+p.adjust(p=c(summary(clust1_lm)$coefficients[2,4], summary(clust2_lm)$coefficients[2,4], summary(clust3_lm)$coefficients[2,4]),
+         method="holm", n=3)
+```
+
+## Diversity
+
+```{r}
+clust_rich <- growth %>% 
+  group_by(Soil, Replicate, cluster) %>% 
+  summarize(richness = n()) %>% 
+  ungroup()
+
+clust_rich %>% 
+  ggplot(aes(x=Soil, y=richness, color=cluster)) +
+  geom_boxplot(aes(color=cluster)) +
+  geom_point() +
+  theme_test()
+```
+
+### WIP STATS
+
+# Death
+
+## Death x cluster
+
+```{r}
+## Calculate ASV averages
+death_chabundh <- death %>% 
+  group_by(Soil, ASV, cluster) %>%  ## asv averages a/c replicates
+  summarize(h = mean(h),
+            chabund = mean(change_abund_corr)) %>% 
+  ungroup()
+
+## Visualize
+## h 
+death_chabundh %>% 
+  ggplot(aes(x=cluster, y=log(h), color=Soil)) +
+  geom_boxplot(aes(color=Soil)) +
+  geom_point(alpha=0.5) +
+  theme_test()
+
+## chabund
+death_chabundh %>% 
+  ggplot(aes(x=cluster, y=log(abs(chabund)), color=Soil)) +
+  geom_boxplot(aes(color=Soil)) +
+  geom_point(alpha=0.5) +
+  theme_test()
+```
+
+### WIP Statistics
+
+# Growth efficiency
+
+```{r}
+greff %>% 
+  select(Soil:Day, mg_co2, greff) %>% 
+  inner_join(abund_prop) %>% 
+  group_by(Soil, Day, cluster) %>% 
+  summarize(greff = mean(greff),
+            abund_total = mean(abund_total)) %>% # average replicates
+  ggplot(aes(x=greff, y=abund_total, color=cluster)) +
+  geom_point() +
+  facet_wrap(Soil~cluster, scales="free") +
+  geom_smooth(method="lm") +
+  theme_test()
+
+greff %>% 
+  select(Soil:Day, mg_co2, greff) %>% 
+  inner_join(abund_prop) %>% 
+  group_by(Soil, Day, cluster) %>% 
+  summarize(greff = mean(greff),
+            abund_prop = mean(abund_prop)) %>% # average replicates
+  ggplot(aes(x=greff, y=abund_prop, color=cluster)) +
+  geom_point() +
+  facet_wrap(Soil~cluster, scales="free") +
+  geom_smooth(method="lm") +
+  theme_test()
+```
+
+## WIP Statistics
