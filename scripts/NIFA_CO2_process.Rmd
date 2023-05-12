@@ -83,7 +83,6 @@ Import:
 area_df <-readRDS("../data_intermediate/NIFA_rawgcms.rds")
 ```
 
-
 # Reformat
 
 ```{r}
@@ -232,9 +231,11 @@ drop_labs <- c("190Meadowmz45litter052322", "185Agmz45litter061222", "186Agmz44l
 area_drop <- filter(area_labs, !(label %in% drop_labs))
 ```
 
+## Impute
+
 Impute lost samples on 05/26/22 via neighbor averaging
 * Most samples on 05/26/22 (GCMS auto-injector failed and headspace lost)
-# TROUBLESHOOT
+
 ```{r}
 # Samples that were measured
 area_drop %>% 
@@ -243,7 +244,7 @@ area_drop %>%
   unique() %>% 
   as.list()
 
-sams_lost <- c(187:190, 192, 193, 195)
+sams_lost <- c(187:190, 192, 193, 195) # samples that were lost
 
 # Calculate imputations
 tps <- read_csv("../headspace_tps.csv")
@@ -255,7 +256,7 @@ imp_sams <- area_drop %>%
   mutate(Microcosm = as.numeric(Sample),
          Litter = if_else(Microcosm %in% 185:190, "litter", "no litter"),
          Soil = if_else(Microcosm %in% c(185:187, 191:193), "Ag", "Meadow")) %>% 
-  add_column(Date="052622", TP=16, Type="sample", Day=9)
+  add_column(Date="052622", TP=16, Type="sample", Day=8)
 
 # Impute into dataframe
 area_samimp <- area_drop %>% 

@@ -558,7 +558,7 @@ endabund_de_welch <- t.test(end_abund_corr ~ Soil, data=growth_death_com[growth_
 
 # Multiple test correction
 death_com_padj <- p.adjust(c(summary(g_de_lm)$coefficients[2,4], summary(lag_de_lm)$coefficients[2,4],
-                             n16S_de_welch$p.value, chabund_de_kw$p.value, startabund_de_kw$p.value, endabund_de_welch$p.value),
+                             n16S_de_kw$p.value, chabund_de_kw$p.value, startabund_de_kw$p.value, endabund_de_welch$p.value),
                            method = "holm", n=6)
 
 death_com_padj
@@ -830,11 +830,14 @@ growth_death_asv %>%
   select(Soil, ASV, type, change_abund_corr) %>% 
   pivot_wider(names_from=type, values_from=change_abund_corr) %>% 
   filter(!(is.na(death) | is.na(growth))) %>% # only taxa with a growth and death estimate
-  ggplot(aes(x=log(growth), y=log(abs(death)), color=Soil)) +
+  ggplot(aes(x=log(growth), y=log(abs(death)))) +
   geom_point() +
-  geom_smooth(method="lm", linetype=2) +
+  geom_smooth(method="lm", linetype=2, color="black") +
   labs(x="ln deltaNg", y="ln deltaNd") +
-  theme_test()
+  #scale_shape_manual(values=c(1, 19)) +
+  facet_wrap(~Soil, scales="free") +
+  theme_test() +
+  theme()
 ```
 
 Growth rate vs change abund:

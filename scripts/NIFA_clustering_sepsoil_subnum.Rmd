@@ -1,0 +1,387 @@
+---
+title: "NIFA clustering no incorporation"
+author: "Cassandra Wattenburger"
+date: "5/8/2023"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+
+sessionInfo()
+```
+
+# Import data
+
+```{r}
+# Import growth data
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+
+# Paprica estimates
+pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+
+# Incorporation
+subnum <- readRDS("../data_intermediate/NIFA_incorp_profiles.rds") %>% 
+  select(Soil, ASV, substrate_num)
+
+# Combine
+growth_pap_subnum <- inner_join(growth, pap) %>% 
+  mutate(length = end_day - start_day, # add length of growth feature
+         start_abund_corr = start_abund/n16S, # correct for n16S
+         end_abund_corr = end_abund/n16S,
+         change_abund_corr = change_abund/n16S) %>% 
+  inner_join(subnum) %>% 
+  select(label, Soil, Replicate, ASV, g, start_day, end_day, length, start_abund_corr, end_abund_corr, change_abund_corr, n16S, genome_size, npaths_actual, nec_actual, substrate_num)
+growth_pap_subnum
+```
+
+Average for each ASV:
+
+```{r}
+# Growth metrics ASV averages, across soils
+growth_asv <- growth_pap_subnum %>% 
+  group_by(Soil, ASV) %>%
+  summarize(g = mean(g),
+            start_day = mean(start_day),
+            end_day = mean(end_day),
+            length = mean(length),
+            start_abund_corr = mean(start_abund_corr),
+            end_abund_corr = mean(end_abund_corr),
+            change_abund_corr = mean(change_abund_corr),
+            substrate_num = mean(substrate_num)) %>% 
+  ungroup()
+growth_asv
+
+features_ag <- growth_asv %>% 
+  filter(Soil=="Ag")
+features_ag
+
+features_meadow <- growth_asv %>% 
+  filter(Soil=="Meadow")
+features_meadow
+```
+
+# Preparation
+
+## Check for co-correlations
+
+Check for co-correlations between variables:
+
+```{r}
+cor(features_ag[, c('g', 'start_day', "end_day", "length", 'start_abund_corr', 'end_abund_corr', 'change_abund_corr', 'substrate_num')])
+
+cor(features_meadow[, c('g', 'start_day', "end_day", "length", 'start_abund_corr', 'end_abund_corr', 'change_abund_corr', 'substrate_num')])
+```
+
+Remove highly co-correlated features and paprica estimates:
+
+```{r}
+features_ag2 <- select(features_ag, ASV, g:length, start_abund_corr, change_abund_corr,
+                       substrate_num)
+features_meadow2 <- select(features_meadow, ASV, g:length, start_abund_corr, change_abund_corr,
+                           substrate_num)
+```
+
+Visualize feature distrubutions:
+
+```{r}
+features_ag2_long <- features_ag2 %>%  
+  pivot_longer(cols=c(g:substrate_num), names_to="feature", values_to="value")
+features_ag2_long
+
+features_meadow2_long <- features_meadow2 %>%  
+  pivot_longer(cols=c(g:substrate_num), names_to="feature", values_to="value")
+features_meadow2_long
+
+# Raw
+features_ag2_long %>% 
+  ggplot(aes(x=value)) +
+  geom_density() +
+  facet_wrap(~feature, scales="free") +
+  theme_test()
+
+features_meadow2_long %>% 
+  ggplot(aes(x=value)) +
+  geom_density() +
+  facet_wrap(~feature, scales="free") +
+  theme_test()
+
+# Log
+features_ag2_long %>% 
+  ggplot(aes(x=log(value))) +
+  geom_density() +
+  facet_wrap(~feature, scales="free") +
+  theme_test()
+
+features_meadow2_long %>% 
+  ggplot(aes(x=log(value))) +
+  geom_density() +
+  facet_wrap(~feature, scales="free") +
+  theme_test()
+```
+
+## Transformations and scaling
+
+Log transform:
+
+```{r}
+features_ag3 <- features_ag2 %>% 
+  mutate(start_day = start_day+1) %>% # can't log transform 0, add 1 to all values of start_day
+  mutate_if(is.numeric, log)
+features_ag3
+
+features_meadow3 <- features_meadow2 %>% 
+  mutate(start_day = start_day+1) %>% # can't log transform 0, add 1 to all values of start_day
+  mutate_if(is.numeric, log)
+features_meadow3
+```
+
+Scale:
+
+```{r}
+features_ag4 <- features_ag3 %>% 
+  mutate_if(is.numeric, scale)
+features_ag4
+
+features_meadow4 <- features_meadow3 %>% 
+  mutate_if(is.numeric, scale)
+features_meadow4
+```
+
+## Add labels
+
+```{r}
+features_ag5 <- features_ag4 %>%
+  column_to_rownames(var="ASV") 
+features_ag5
+
+features_meadow5 <- features_meadow4 %>%
+  column_to_rownames(var="ASV") 
+features_meadow5
+```
+
+Re-visualize feature distributions:
+
+```{r}
+features_ag5_long <- features_ag5 %>%  
+  pivot_longer(cols=c(g:substrate_num), names_to="feature", values_to="value")
+features_ag5_long
+
+features_meadow5_long <- features_meadow5 %>%  
+  pivot_longer(cols=c(g:substrate_num), names_to="feature", values_to="value")
+features_meadow5_long
+
+features_ag5_long %>% 
+  ggplot(aes(x=value)) +
+  geom_density() +
+  facet_wrap(~feature, scales="free") +
+  theme_test()
+
+features_meadow5_long %>% 
+  ggplot(aes(x=value)) +
+  geom_density() +
+  facet_wrap(~feature, scales="free") +
+  theme_test()
+```
+
+# Principle components
+
+```{r}
+# Remove NAs if any
+features_ag6 <- features_ag5[complete.cases(features_ag5),]
+features_meadow6 <- features_meadow5[complete.cases(features_meadow5),]
+
+features_ag6_pcs <- prcomp(features_ag6)
+features_meadow6_pcs <- prcomp(features_meadow6)
+
+summary(features_ag6_pcs)
+summary(features_meadow6_pcs)
+
+# Create dataframe
+features_ag6_pcs_df <- features_ag6_pcs$x %>% 
+  data.frame()
+features_ag6_pcs_df
+
+features_meadow6_pcs_df <- features_meadow6_pcs$x %>% 
+  data.frame()
+features_meadow6_pcs_df
+```
+
+Visualize:
+
+```{r}
+# PC 1 & 2
+features_ag6_pcs_df %>% 
+  ggplot(aes(x=PC1, y=PC2)) +
+  geom_point() +
+  theme_test()
+
+features_meadow6_pcs_df %>% 
+  ggplot(aes(x=PC1, y=PC2)) +
+  geom_point() +
+  theme_test()
+```
+
+```{r}
+# Cumulative proportion of variance explained
+summary(features_ag6_pcs)$importance[3,] %>%
+  as.data.frame() %>% 
+  rownames_to_column(var="PC") %>% 
+  rename(cum_prop='.') %>% 
+  ggplot(aes(x=PC, y=cum_prop)) +
+  geom_point() +
+  geom_line() +
+  theme_test()
+
+summary(features_meadow6_pcs)$importance[3,] %>%
+  as.data.frame() %>% 
+  rownames_to_column(var="PC") %>% 
+  rename(cum_prop='.') %>% 
+  ggplot(aes(x=PC, y=cum_prop)) +
+  geom_point() +
+  geom_line() +
+  theme_test()
+
+# Scree plot
+eigenvals_ag <- features_ag6_pcs$sdev^2 %>% 
+  data.frame() %>% 
+  add_column(PC=1:nrow(.)) %>% 
+  rename(eigenvalue=".") %>% 
+  mutate(PC = as.factor(PC))
+eigenvals_ag
+
+eigenvals_ag %>% 
+  ggplot(aes(x=PC, y=eigenvalue)) +
+  geom_point() +
+  geom_line() +
+  theme_test()
+
+eigenvals_meadow <- features_meadow6_pcs$sdev^2 %>% 
+  data.frame() %>% 
+  add_column(PC=1:nrow(.)) %>% 
+  rename(eigenvalue=".") %>% 
+  mutate(PC = as.factor(PC))
+eigenvals_meadow
+
+eigenvals_meadow %>% 
+  ggplot(aes(x=PC, y=eigenvalue)) +
+  geom_point() +
+  geom_line() +
+  theme_test()
+```
+
+Shoulder is at 3-4 PCs.
+
+# Cluster
+
+K-means:
+
+Choosing n=3 because skree plot above, want to do comparison to CSR triangle theory and previous work in lab with data from same soils, data is a single cloud anyway to cluster choice is somewhat arbritray, using as a basis for looking at how growth metrics tend to self-organize within community.
+
+```{r}
+# Import libraries
+library(factoextra)
+library(cluster)
+
+# Cluster
+set.seed(123)
+km3_ag <- kmeans(features_ag6, centers = 3, nstart = 25)
+km3_ag
+
+km3_meadow <- kmeans(features_meadow6, centers = 3, nstart = 25)
+km3_meadow
+
+# Cluster key
+clusterkey_ag <- km3_ag$cluster %>% 
+  data.frame() %>% 
+  rename(cluster='.') %>% 
+  rownames_to_column(var="ASV") %>% 
+  select(ASV, cluster) %>% 
+  mutate(cluster = as.character(cluster))
+clusterkey_ag
+
+clusterkey_meadow <- km3_meadow$cluster %>% 
+  data.frame() %>% 
+  rename(cluster='.') %>% 
+  rownames_to_column(var="ASV") %>% 
+  select(ASV, cluster) %>% 
+  mutate(cluster = as.character(cluster)) %>% 
+  mutate(cluster = case_when(cluster=="1" ~ "3", # rename clusters to match ag, based on growth metric profiles
+                             cluster=="2" ~ "2",
+                             cluster=="3" ~ "1"))
+clusterkey_meadow
+```
+
+Visualize:
+
+On top of first 3 principle components
+
+```{r}
+# Add cluster designations
+features_clust_ag <- features_ag6_pcs_df %>% 
+  rownames_to_column(var="ASV") %>% 
+  inner_join(clusterkey_ag)
+
+features_clust_meadow <- features_meadow6_pcs_df %>% 
+  rownames_to_column(var="ASV") %>% 
+  inner_join(clusterkey_meadow)
+
+features_clust_ag %>% 
+  ggplot(aes(x=PC1, y=PC2, color=cluster)) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  geom_point() +
+  theme_test()
+
+features_clust_meadow %>% 
+  ggplot(aes(x=PC1, y=PC2, color=cluster)) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  geom_point() +
+  theme_test()
+
+# 3D
+library(plotly)
+pcs_clust_ag <- plot_ly(features_clust_ag, x=~PC1, y=~PC2, z=~PC3, 
+                     color=~cluster, marker=list(size=10, line=list(color = 'rgba(0, 0, 0, .8)', width = 2)))
+pcs_clust_ag
+
+pcs_clust_meadow <- plot_ly(features_clust_meadow, x=~PC1, y=~PC2, z=~PC3, 
+                     color=~cluster, marker=list(size=10, line=list(color = 'rgba(0, 0, 0, .8)', width = 2)))
+pcs_clust_meadow
+```
+
+Combined:
+
+```{r}
+# Combine
+features_clust_meadow2 <- features_clust_meadow %>% 
+  add_column(Soil="Meadow")
+
+features_clust_ag2 <- features_clust_ag %>% 
+  add_column(Soil="Ag")
+
+features_clust <- bind_rows(features_clust_ag2, features_clust_meadow2)
+
+features_clust %>% 
+  ggplot(aes(x=PC1, y=PC2, color=cluster, shape=Soil)) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_point() +
+  theme_test()
+```
+
+Save combined:
+
+```{r,e val=FALSE}
+cluster_key_all <- select(features_clust, Soil, ASV, cluster)
+saveRDS(cluster_key_all, file="../data_intermediate/NIFA_cluster_sepsoil_subnum.rds")
+```
+

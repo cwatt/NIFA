@@ -96,7 +96,7 @@ resp_rate <- resp %>%
          resp_rate_co2 = mg_co2 / time_step)
 ```
 
-Visulize:
+Visualize:
 
 ```{r}
 resp_rate %>% 
@@ -190,7 +190,6 @@ hist(resid(weightedg_lm)) # normal
 plot(predict(weightedg_lm), resid(weightedg_lm)) # homoskedastic
 summary(weightedg_lm)
 ```
-
 
 # Respiration rate x weighted growth rate:
 
@@ -424,13 +423,16 @@ Visualize:
 
 ```{r}
 greff_df %>% 
-  ggplot(aes(x=Day, y=log(greff), color=Soil)) +
-  geom_point() +
-  geom_smooth() +
-  theme_test()
+  ggplot(aes(x=Day, y=log(greff), linetype=Soil)) +
+  geom_point(aes(shape=Soil), size=3) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_smooth(color="black") +
+  scale_linetype_manual(values=c(2,1)) +
+  theme_test() +
+  theme(axis.text = element_text(size=12),
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12))
 ```
-
-# PIN: How does this curve compare with shifts in incorporation profiles?
 
 ## Statistics
 

@@ -1,0 +1,1429 @@
+---
+title: "NIFA - cluster analysis"
+author: "Cassandra Wattenburger"
+date: "5/8/2023"
+output: githib_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+## Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+
+sessionInfo()
+```
+
+# REDO ALL STATS AGAIN NEW CLUSTERS
+
+# Import data
+
+```{r}
+## Clusters
+clust <- readRDS("../data_intermediate/NIFA_cluster_sepsoil_subnum.rds")
+
+## Growth
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+
+# Death 
+death <- readRDS("../data_intermediate/NIFA_dests_final_ind.rds")
+
+## Taxonomy
+tax <- read_tsv("../data_amplicon/NIFA2/final/NIFA2.taxonomy-final.tsv")
+
+## Paprica estimates
+pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+
+## Incorporation profiles
+incorp <- readRDS("../data_intermediate/NIFA_incorp_profiles.rds")
+
+## Normalized abundances
+abund <- readRDS("../data_intermediate/NIFA_norm_prepped.rds")
+
+# Growth efficiency
+greff <- readRDS("../data_intermediate/NIFA_greff.rds")
+
+# Respiration
+resp <- readRDS("../data_intermediate/NIFA_repiration.rds")
+```
+
+# Cluster characteristics
+
+## Growth metrics
+
+Reformat/calculate:
+
+```{r}
+# Full dataset
+growth2 <- inner_join(growth, pap) %>% ## add paprica predictions
+  mutate(start_abund_corr = start_abund/n16S, ## correct for 16S copy number
+         end_abund_corr = end_abund/n16S,
+         change_abund_corr = change_abund/n16S,
+         length = end_day-start_day) %>% # calculate length of growth
+  select(everything(), -c(label, slope:k, start_pt, end_pt, start_abund:change_abund)) %>% 
+  left_join(clust)
+growth2 <- growth2[complete.cases(growth2),]
+
+# ASV averages
+growth_asv <- inner_join(growth, pap) %>% ## add paprica predictions
+  mutate(start_abund_corr = start_abund/n16S, ## correct for 16S copy number
+         end_abund_corr = end_abund/n16S,
+         change_abund_corr = change_abund/n16S,
+         length = end_day-start_day) %>% # calculate length of growth
+  select(everything(), -c(label, slope:k, start_pt, end_pt, start_abund:change_abund)) %>% 
+  group_by(Soil, ASV) %>% # ASV averages
+  summarise_at(vars(g:length), mean, na.rm = TRUE) %>% 
+  inner_join(clust) ## add cluster memberships
+```
+
+Visualize:
+
+```{r}
+# g
+g_plot <- growth_asv %>% 
+  ggplot(aes(x=cluster, y=log(g), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+g_plot
+
+# start day
+start_plot <- growth_asv %>% 
+  ggplot(aes(x=cluster, y=log(start_day+1), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+start_plot
+
+# end day
+end_plot <- growth_asv %>% 
+  ggplot(aes(x=cluster, y=log(end_day), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+end_plot
+
+# length
+length_plot <- growth_asv %>% 
+  ggplot(aes(x=cluster, y=log(length), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+length_plot
+
+# Start abund
+stabund_plot <- growth_asv %>% 
+  ggplot(aes(x=cluster, y=log(start_abund_corr), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+stabund_plot
+
+# change abund
+chabund_plot <- growth_asv %>% 
+  ggplot(aes(x=cluster, y=log(change_abund_corr), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+chabund_plot
+```
+
+### Statistics
+
+Generation time:
+
+```{r}
+# Nested linear model
+gclust_lm <- lm(log(g) ~ cluster*Soil, data=growth_asv)
+hist(resid(gclust_lm)) # normal
+plot(predict(gclust_lm), resid(gclust_lm)) # homoskedastic
+anova(gclust_lm)
+# test term order
+gclust_lm <- lm(log(g) ~ Soil*cluster, data=growth_asv)
+anova(gclust_lm) # same
+
+# Contrasts of interest
+gclust12_lm <- lm(log(g) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "2")))
+hist(resid(gclust12_lm)) # normal
+plot(predict(gclust12_lm), resid(gclust12_lm)) # homoskedasticish
+
+gclust23_lm <- lm(log(g) ~ cluster, data=filter(growth_asv, cluster %in% c("2", "3")))
+hist(resid(gclust23_lm)) # normal
+plot(predict(gclust23_lm), resid(gclust23_lm)) # homoskedastic
+
+gclust13_lm <- lm(log(g) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "3")))
+hist(resid(gclust23_lm)) # normal
+plot(predict(gclust23_lm), resid(gclust23_lm)) # homoskedastic
+
+gclust1_lm <- lm(log(g) ~ Soil, data=filter(growth_asv, cluster %in% c("1")))
+hist(resid(gclust1_lm)) # normal
+plot(predict(gclust1_lm), resid(gclust1_lm)) # homoskedasticish
+
+gclust2_lm <- lm(log(g) ~ Soil, data=filter(growth_asv, cluster %in% c("2")))
+hist(resid(gclust2_lm)) # normal
+plot(predict(gclust2_lm), resid(gclust2_lm)) # homoskedastic
+
+gclust3_lm <- lm(log(g) ~ Soil, data=filter(growth_asv, cluster %in% c("3")))
+hist(resid(gclust3_lm)) # normal
+plot(predict(gclust3_lm), resid(gclust3_lm)) # homoskedastic
+
+# P adjustment
+p.adjust(p=c(summary(gclust12_lm)$coefficients[2,4], summary(gclust23_lm)$coefficients[2,4], summary(gclust13_lm)$coefficients[2,4],
+             summary(gclust1_lm)$coefficients[2,4], summary(gclust2_lm)$coefficients[2,4], summary(gclust3_lm)$coefficients[2,4]),
+         method="holm", n=6)
+```
+
+Lag:
+
+```{r}
+# nested linear model
+lagclust_lm <- lm(log(start_day+1) ~ cluster*Soil, data=growth_asv)
+hist(resid(lagclust_lm)) # normal
+plot(predict(lagclust_lm), resid(lagclust_lm)) # homoskedastic
+anova(lagclust_lm)
+# Check effect of term order
+lagclust_lm <- lm(log(start_day+1) ~ Soil*cluster, data=growth_asv)
+anova(lagclust_lm)
+# main effects significant in both, will use first nested model
+
+# Contrasts of interest
+lagclust12_lm <- lm(log(start_day+1) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "2")))
+hist(resid(lagclust12_lm)) # normal
+plot(predict(lagclust12_lm), resid(lagclust12_lm)) # homoskedasticish
+
+lagclust23_lm <- lm(log(start_day+1) ~ cluster, data=filter(growth_asv, cluster %in% c("2", "3")))
+hist(resid(lagclust23_lm)) # normal
+plot(predict(lagclust23_lm), resid(lagclust23_lm)) # homoskedastic
+
+lagclust13_lm <- lm(log(start_day+1) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "3")))
+hist(resid(lagclust23_lm)) # normal
+plot(predict(lagclust23_lm), resid(lagclust23_lm)) # homoskedastic
+
+lagclust1_lm <- lm(log(start_day+1) ~ Soil, data=filter(growth_asv, cluster %in% c("1")))
+hist(resid(lagclust1_lm)) # normalish
+plot(predict(lagclust1_lm), resid(lagclust1_lm)) # homoskedasticish
+
+lagclust2_lm <- lm(log(start_day+1) ~ Soil, data=filter(growth_asv, cluster %in% c("2")))
+hist(resid(lagclust2_lm)) # normal
+plot(predict(lagclust2_lm), resid(lagclust2_lm)) # homoskedastic
+
+lagclust3_lm <- lm(log(start_day+1) ~ Soil, data=filter(growth_asv, cluster %in% c("3")))
+hist(resid(lagclust3_lm)) # normal
+plot(predict(lagclust3_lm), resid(lagclust3_lm)) # homoskedastic
+
+# P adjustment
+p.adjust(p=c(summary(lagclust12_lm)$coefficients[2,4], summary(lagclust23_lm)$coefficients[2,4], summary(lagclust13_lm)$coefficients[2,4],
+             summary(lagclust1_lm)$coefficients[2,4], summary(lagclust2_lm)$coefficients[2,4], summary(lagclust3_lm)$coefficients[2,4]),
+         method="holm", n=6)
+```
+
+End day:
+
+```{r}
+# Nested linear model
+endclust_lm <- lm(log(end_day) ~ cluster*Soil, data=growth_asv)
+hist(resid(endclust_lm)) # normalish
+plot(predict(endclust_lm), resid(endclust_lm)) # homoskedasticish
+anova(endclust_lm)
+# check term ordering
+endclust_lm <- lm(log(end_day) ~ Soil*cluster, data=growth_asv)
+anova(endclust_lm) # soil loses significance
+
+# Contrasts
+endclust12_lm <- lm(log(start_day+1) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "2")))
+hist(resid(endclust12_lm)) # normal
+plot(predict(endclust12_lm), resid(endclust12_lm)) # homoskedasticish
+
+endclust23_lm <- lm(log(start_day+1) ~ cluster, data=filter(growth_asv, cluster %in% c("2", "3")))
+hist(resid(endclust23_lm)) # normal
+plot(predict(endclust23_lm), resid(endclust23_lm)) # homoskedasticish
+
+endclust13_lm <- lm(log(start_day+1) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "3")))
+hist(resid(endclust23_lm)) # normal
+plot(predict(endclust23_lm), resid(endclust23_lm)) # homoskedasticish
+
+# P adjustment
+p.adjust(p=c(summary(endclust12_lm)$coefficients[2,4], summary(endclust23_lm)$coefficients[2,4], summary(endclust13_lm)$coefficients[2,4]),
+         method="holm", n=3)
+```
+
+Length:
+
+```{r}
+# Nested linear model
+lengthclust_lm <- lm(log(length) ~ cluster*Soil, data=growth_asv)
+hist(resid(lengthclust_lm)) # normalish
+plot(predict(lengthclust_lm), resid(lengthclust_lm)) # homoskedasticish
+anova(lengthclust_lm)
+# check term ordering
+lengthclust_lm <- lm(log(length) ~ Soil*cluster, data=growth_asv)
+anova(lengthclust_lm) # same
+
+# Contrasts
+lengthclust12_lm <- lm(log(length) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "2")))
+hist(resid(lengthclust12_lm)) # normal
+plot(predict(lengthclust12_lm), resid(lengthclust12_lm)) # homoskedasticish
+
+lengthclust23_lm <- lm(log(length) ~ cluster, data=filter(growth_asv, cluster %in% c("2", "3")))
+hist(resid(lengthclust23_lm)) # normal
+plot(predict(lengthclust23_lm), resid(lengthclust23_lm)) # homoskedastic
+
+lengthclust13_lm <- lm(log(length) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "3")))
+hist(resid(lengthclust23_lm)) # normal
+plot(predict(lengthclust23_lm), resid(lengthclust23_lm)) # homoskedastic
+
+lengthclust1_lm <- lm(log(length) ~ Soil, data=filter(growth_asv, cluster %in% c("1")))
+hist(resid(lengthclust1_lm)) # normalish
+plot(predict(lengthclust1_lm), resid(lengthclust1_lm)) # homoskedasticish
+
+lengthclust2_lm <- lm(log(length) ~ Soil, data=filter(growth_asv, cluster %in% c("2")))
+hist(resid(lengthclust2_lm)) # normal
+plot(predict(lengthclust2_lm), resid(lengthclust2_lm)) # homoskedastic
+
+lengthclust3_lm <- lm(log(length) ~ Soil, data=filter(growth_asv, cluster %in% c("3")))
+hist(resid(lengthclust3_lm)) # normal
+plot(predict(lengthclust3_lm), resid(lengthclust3_lm)) # homoskedastic
+
+# P adjustment
+p.adjust(p=c(summary(lengthclust1_lm)$coefficients[2,4], summary(lengthclust2_lm)$coefficients[2,4], summary(lengthclust3_lm)$coefficients[2,4],
+             summary(lengthclust12_lm)$coefficients[2,4], summary(lengthclust23_lm)$coefficients[2,4], summary(lengthclust13_lm)$coefficients[2,4]),
+         method="holm", n=6)
+```
+
+Starting abundance:
+
+```{r}
+# Nested linear model
+stabundclust_lm <- lm(log(start_abund_corr) ~ cluster*Soil, data=growth_asv)
+hist(resid(stabundclust_lm)) # normalish
+plot(predict(stabundclust_lm), resid(stabundclust_lm)) # homoskedasticish
+anova(stabundclust_lm)
+# check term ordering
+stabundclust_lm <- lm(log(start_abund_corr) ~ Soil*cluster, data=growth_asv)
+anova(stabundclust_lm) # same
+
+# Contrasts
+stabundclust12_lm <- lm(log(start_abund_corr) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "2")))
+hist(resid(stabundclust12_lm)) # normal
+plot(predict(stabundclust12_lm), resid(stabundclust12_lm)) # homoskedasticish
+
+stabundclust23_lm <- lm(log(start_abund_corr) ~ cluster, data=filter(growth_asv, cluster %in% c("2", "3")))
+hist(resid(stabundclust23_lm)) # normal
+plot(predict(stabundclust23_lm), resid(stabundclust23_lm)) # homoskedasticish, borderline
+
+stabundclust13_lm <- lm(log(start_abund_corr) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "3")))
+hist(resid(stabundclust23_lm)) # normal
+plot(predict(stabundclust23_lm), resid(stabundclust23_lm)) # homoskedasticish
+
+stabundclust1_lm <- lm(log(start_abund_corr) ~ Soil, data=filter(growth_asv, cluster %in% c("1")))
+hist(resid(stabundclust1_lm)) # normalish
+plot(predict(stabundclust1_lm), resid(stabundclust1_lm)) # homoskedasticish
+
+stabundclust2_lm <- lm(log(start_abund_corr) ~ Soil, data=filter(growth_asv, cluster %in% c("2")))
+hist(resid(stabundclust2_lm)) # normal
+plot(predict(stabundclust2_lm), resid(stabundclust2_lm)) # homoskedastic
+
+stabundclust3_lm <- lm(log(start_abund_corr) ~ Soil, data=filter(growth_asv, cluster %in% c("3")))
+hist(resid(stabundclust3_lm)) # normalish
+plot(predict(stabundclust3_lm), resid(stabundclust3_lm)) # homoskedasticish
+
+# P adjustment
+p.adjust(p=c(summary(stabundclust1_lm)$coefficients[2,4], summary(stabundclust2_lm)$coefficients[2,4], summary(stabundclust3_lm)$coefficients[2,4],
+             summary(stabundclust12_lm)$coefficients[2,4], summary(stabundclust23_lm)$coefficients[2,4], summary(stabundclust13_lm)$coefficients[2,4]),
+         method="holm", n=6)
+```
+
+Change abundance:
+
+```{r}
+# Nested linear model
+chabundclust_lm <- lm(log(change_abund_corr) ~ cluster*Soil, data=growth_asv)
+hist(resid(chabundclust_lm)) # normal
+plot(predict(chabundclust_lm), resid(chabundclust_lm)) # homoskedasticish
+anova(chabundclust_lm)
+# check term ordering
+chabundclust_lm <- lm(log(change_abund_corr) ~ Soil*cluster, data=growth_asv)
+anova(chabundclust_lm) # changes, cluster loses significance
+
+# Contrasts
+chabundclust12_lm <- lm(log(change_abund_corr) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "2")))
+hist(resid(chabundclust12_lm)) # normal
+plot(predict(chabundclust12_lm), resid(chabundclust12_lm)) # homoskedasticish
+
+chabundclust23_lm <- lm(log(change_abund_corr) ~ cluster, data=filter(growth_asv, cluster %in% c("2", "3")))
+hist(resid(chabundclust23_lm)) # normal
+plot(predict(chabundclust23_lm), resid(chabundclust23_lm)) # heteroskedastic
+# Switching to welch t-test...
+chabundclust23_welch <- t.test(log(change_abund_corr) ~ cluster, data=filter(growth_asv, cluster %in% c("2", "3")), var.equal=FALSE)
+
+chabundclust13_lm <- lm(change_abund_corr ~ cluster, data=filter(growth_asv, cluster %in% c("1", "3")))
+hist(resid(chabundclust23_lm)) # normal
+plot(predict(chabundclust23_lm), resid(chabundclust23_lm)) # heteroskedastic, 
+# Switching to welch t-test...
+chabundclust13_welch <- t.test(log(change_abund_corr) ~ cluster, data=filter(growth_asv, cluster %in% c("1", "3")), var.equal=FALSE)
+
+chabundclust1_lm <- lm(log(change_abund_corr) ~ Soil, data=filter(growth_asv, cluster %in% c("1")))
+hist(resid(chabundclust1_lm)) # normalish
+plot(predict(chabundclust1_lm), resid(chabundclust1_lm)) # heteroskedastic
+# Switching to welch t-test...
+chabundclust1_welch <- t.test(log(change_abund_corr) ~ Soil, data=filter(growth_asv, cluster %in% c("1")), var.equal=FALSE)
+
+chabundclust2_lm <- lm(log(change_abund_corr) ~ Soil, data=filter(growth_asv, cluster %in% c("2")))
+hist(resid(chabundclust2_lm)) # normal
+plot(predict(chabundclust2_lm), resid(chabundclust2_lm)) # homoskedastic
+
+chabundclust3_lm <- lm(log(change_abund_corr) ~ Soil, data=filter(growth_asv, cluster %in% c("3")))
+hist(resid(chabundclust3_lm)) # normalish
+plot(predict(chabundclust3_lm), resid(chabundclust3_lm)) # homoskedasticish
+
+# p adjustment
+p.adjust(p=c(chabundclust1_welch$p.value, summary(stabundclust2_lm)$coefficients[2,4], summary(stabundclust3_lm)$coefficients[2,4],
+             chabundclust13_welch$p.value, chabundclust23_welch$p.value, summary(stabundclust13_lm)$coefficients[2,4]),
+         method="holm", n=6)
+```
+
+## Death metrics
+
+Reformat/calculate:
+
+```{r}
+# Full data
+death2 <- inner_join(death, pap) %>% ## add paprica predictions
+  mutate(start_abund_corr = start_abund/n16S, ## correct for 16S copy number
+         end_abund_corr = end_abund/n16S,
+         change_abund_corr = change_abund/n16S,
+         length = end_day-start_day) %>% # calculate length of growth
+  select(everything(), -c(label, slope:k, start_pt, end_pt, start_abund:change_abund)) %>% 
+  left_join(clust)
+death2 <- death2[complete.cases(death2),] # remove unclustered results
+
+# ASV averages
+death_asv <- inner_join(death, pap) %>% ## add paprica predictions
+  mutate(start_abund_corr = start_abund/n16S, ## correct for 16S copy number
+         end_abund_corr = end_abund/n16S,
+         change_abund_corr = change_abund/n16S,
+         length = end_day-start_day) %>% # calculate length of growth
+  select(everything(), -c(label, slope:k, start_pt, end_pt, start_abund:change_abund)) %>% 
+  group_by(Soil, ASV) %>% # ASV averages
+  summarise_at(vars(h:length), mean, na.rm = TRUE) %>% 
+  inner_join(clust) ## add cluster memberships
+```
+
+Calculate proportion death after growth:
+
+```{r}
+# Proportion died after growth
+growth_death <- growth2 %>% 
+  left_join(clust) %>% 
+  select(Soil, ASV, Replicate, cluster, growth_start = start_day, growth_end = end_day) %>% 
+  inner_join(death2) %>% 
+  select(Soil, ASV, Replicate, cluster, growth_start, growth_end, death_start = start_day, death_end = end_day) %>% 
+  filter(death_start >= growth_end)
+growth_death
+
+# Died either before or after death
+death_anytime <- growth2 %>% 
+  left_join(clust) %>% 
+  select(Soil, ASV, Replicate, cluster, growth_start = start_day, growth_end = end_day) %>% 
+  inner_join(death2) %>% 
+  select(Soil, ASV, Replicate, cluster, growth_start, growth_end, death_start = start_day, death_end = end_day)
+death_anytime
+
+# Calculate totals
+clust_grew_count <- growth2 %>% 
+  group_by(Soil, Replicate, cluster) %>% 
+  summarize(grew_count = n())
+clust_grew_count
+
+clust_died_count <- growth_death %>% 
+  group_by(Soil, Replicate, cluster) %>% 
+  summarize(died_count = n())
+clust_died_count
+
+clust_diedany_count <- death_anytime %>% 
+  group_by(Soil, Replicate, cluster) %>% 
+  summarize(died_count = n())
+clust_diedany_count
+
+# Combine
+clust_grewdied_prop <- clust_grew_count %>% 
+  inner_join(clust_died_count) %>% 
+  mutate(prop_died = died_count/grew_count)
+clust_grewdied_prop
+
+clust_diedany_prop <- clust_grew_count %>% 
+  inner_join(clust_diedany_count) %>% 
+  mutate(prop_died = died_count/grew_count)
+clust_grewdied_prop
+```
+
+Visualize:
+
+```{r}
+# Death after growth proportion
+clust_grewdied_prop %>% 
+  ggplot(aes(x=cluster, y=prop_died, fill=Soil, color=cluster)) +
+  geom_point(aes(shape=Soil), height=0) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+
+# Death anytime
+clust_diedany_prop %>% 
+  ggplot(aes(x=cluster, y=prop_died, fill=Soil, color=cluster)) +
+  geom_point(aes(shape=Soil), height=0) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+
+# Halving time
+death_asv %>% 
+  ggplot(aes(x=cluster, y=log(h), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+
+# Start day
+death_asv %>% 
+  ggplot(aes(x=cluster, y=log(start_day+1), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+
+# End day
+death_asv %>% 
+  ggplot(aes(x=cluster, y=end_day, fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+
+# Length
+death_asv %>% 
+  ggplot(aes(x=cluster, y=log(length), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+
+# start abund
+death_asv %>% 
+  ggplot(aes(x=cluster, y=log(abs(start_abund_corr)), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+
+# change abund
+death_asv %>% 
+  ggplot(aes(x=cluster, y=log(abs(change_abund_corr)), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+```
+
+### Statistics
+
+Proportion death after/before growth:
+
+```{r}
+# Overall
+growthdeath_lm <- lm(log(prop_died) ~ cluster*Soil, data=clust_diedany_prop) # missing replicates for some soils, so excluding it as effect
+hist(resid(growthdeath_lm)) # normalish
+plot(predict(growthdeath_lm), resid(growthdeath_lm)) # heteroskedastic
+# Switching to welch anova, ignoring soils
+growthdeath_wanova <- oneway.test(log(prop_died) ~ cluster, data=clust_diedany_prop, var.equal=FALSE)
+growthdeath_wanova
+
+# Contrasts
+growthdeath12_lm <- lm(log(prop_died) ~ cluster, data=filter(clust_diedany_prop, cluster %in% c("1", "2")))
+hist(resid(growthdeath12_lm)) # normalish
+plot(predict(growthdeath12_lm), resid(growthdeath12_lm)) # heteroskedastic
+# Switching to welch t-test...
+growthdeath12_welch <- t.test(log(prop_died) ~ cluster, data=filter(clust_diedany_prop, cluster %in% c("1", "2")))
+
+growthdeath23_lm <- lm(log(prop_died) ~ cluster, data=filter(clust_diedany_prop, cluster %in% c("3", "2")))
+hist(resid(growthdeath23_lm)) # normalish
+plot(predict(growthdeath23_lm), resid(growthdeath23_lm)) # homoskedastic
+# Switching to welch t-test (consistency)...
+growthdeath23_welch <- t.test(log(prop_died) ~ cluster, data=filter(clust_diedany_prop, cluster %in% c("3", "2")))
+
+growthdeath13_lm <- lm(log(prop_died) ~ cluster, data=filter(clust_diedany_prop, cluster %in% c("1", "3")))
+hist(resid(growthdeath13_lm)) # normalish
+plot(predict(growthdeath13_lm), resid(growthdeath13_lm)) # heteroskedastic
+# Switching to welch t-test...
+growthdeath13_welch <- t.test(log(prop_died) ~ cluster, data=filter(clust_diedany_prop, cluster %in% c("1", "3")))
+
+# P adjustment
+p.adjust(p=c(growthdeath12_welch$p.value, growthdeath23_welch$p.value, growthdeath13_welch$p.value),
+         method="holm", n=3)
+```
+
+Halving times:
+
+```{r}
+halfclust_lm <- lm(log(h) ~ cluster*Soil, data=death_asv)
+hist(resid(halfclust_lm)) # normal
+plot(predict(halfclust_lm), resid(halfclust_lm)) # homoskedastic
+anova(halfclust_lm)
+```
+
+Start day:
+
+```{r}
+startclust_lm <- lm(log(start_day+1) ~ cluster*Soil, data=death_asv)
+hist(resid(startclust_lm)) # normalish
+plot(predict(startclust_lm), resid(halfclust_lm)) # homoskedastic
+anova(startclust_lm)
+```
+
+End day:
+
+```{r}
+endclust_lm <- lm(end_day ~ cluster*Soil, data=death_asv)
+hist(resid(endclust_lm)) # normalish
+plot(predict(endclust_lm), resid(halfclust_lm)) # homoskedastic
+anova(endclust_lm)
+```
+
+Length:
+
+```{r}
+# Overall
+lengthclust_lm <- lm(log(length) ~ cluster*Soil, data=death_asv)
+hist(resid(lengthclust_lm)) # normalish
+plot(predict(lengthclust_lm), resid(halfclust_lm)) # homoskedastic
+anova(lengthclust_lm)
+```
+
+Start abundance:
+
+```{r}
+# Overall
+stabundclust_lm <- lm(log(start_abund_corr) ~ cluster*Soil, data=death_asv)
+hist(resid(stabundclust_lm)) # normal
+plot(predict(stabundclust_lm), resid(halfclust_lm)) # homoskedasticish
+anova(stabundclust_lm)
+# check term order
+stabundclust_lm <- lm(log(start_abund_corr) ~ Soil*cluster, data=death_asv)
+anova(stabundclust_lm)
+
+# Contrasts
+stabundclust12_lm <- lm(log(start_abund_corr) ~ cluster, data=filter(death_asv, cluster %in% c("1", "2")))
+hist(resid(stabundclust12_lm)) # normal
+plot(predict(stabundclust12_lm), resid(stabundclust12_lm)) # heteroskedastic
+# Switching to welch t-test...
+stabundclust12_welch <- t.test(log(start_abund_corr) ~ cluster, data=filter(death_asv, cluster %in% c("1", "2")), var.equal=FALSE)
+
+stabundclust23_lm <- lm(log(start_abund_corr) ~ cluster, data=filter(death_asv, cluster %in% c("2", "3")))
+hist(resid(stabundclust23_lm)) # normal
+plot(predict(stabundclust23_lm), resid(stabundclust23_lm)) # heteroskedastic
+# Switching to welch t-test...
+stabundclust23_welch <- t.test(log(start_abund_corr) ~ cluster, data=filter(death_asv, cluster %in% c("3", "2")), var.equal=FALSE)
+
+stabundclust13_lm <- lm(log(start_abund_corr) ~ cluster, data=filter(death_asv, cluster %in% c("1", "3")))
+hist(resid(stabundclust23_lm)) # right-tailed
+plot(predict(stabundclust23_lm), resid(stabundclust23_lm)) # heteroskedastic, pick poison
+# Switching to welch t-test...
+stabundclust13_welch <- t.test(log(start_abund_corr) ~ cluster, data=filter(death_asv, cluster %in% c("3", "1")), var.equal=FALSE)
+
+stabundclust1_lm <- lm(log(start_abund_corr) ~ Soil, data=filter(death_asv, cluster %in% c("1")))
+hist(resid(stabundclust1_lm)) # normal
+plot(predict(stabundclust1_lm), resid(stabundclust1_lm)) # homoskedasticish
+
+stabundclust2_lm <- lm(log(start_abund_corr) ~ Soil, data=filter(death_asv, cluster %in% c("2")))
+hist(resid(stabundclust2_lm)) # normal
+plot(predict(stabundclust2_lm), resid(stabundclust2_lm)) # homoskedastic
+
+stabundclust3_lm <- lm(log(start_abund_corr) ~ Soil, data=filter(death_asv, cluster %in% c("3")))
+hist(resid(stabundclust3_lm)) # normal
+plot(predict(stabundclust3_lm), resid(stabundclust3_lm)) # homoskedastic
+
+# P adjustment
+p.adjust(p=c(summary(stabundclust1_lm)$coefficients[2,4], summary(stabundclust2_lm)$coefficients[2,4], summary(stabundclust3_lm)$coefficients[2,4],
+             stabundclust12_welch$p.value, stabundclust23_welch$p.value, stabundclust13_welch$p.value),
+         method="holm", n=6)
+```
+
+Change in abundance:
+
+```{r}
+# Overall
+chabundclust_lm <- lm(log(abs(change_abund_corr)) ~ cluster*Soil, data=death_asv)
+hist(resid(chabundclust_lm)) # normalish
+plot(predict(chabundclust_lm), resid(halfclust_lm)) # homoskedastic
+anova(chabundclust_lm)
+# Check term order
+chabundclust_lm <- lm(log(abs(change_abund_corr)) ~ Soil*cluster, data=death_asv)
+anova(chabundclust_lm) # same
+
+# Contrasts
+chabundclust12_lm <- lm(log(abs(change_abund_corr)) ~ cluster, data=filter(death_asv, cluster %in% c("1", "2")))
+hist(resid(chabundclust12_lm)) # normalish
+plot(predict(chabundclust12_lm), resid(chabundclust12_lm)) # heteroskedastic
+# Switching to welch t-test...
+chabundclust12_welch <- t.test(log(abs(change_abund_corr)) ~ cluster, data=filter(death_asv, cluster %in% c("1", "2")), var.equal=FALSE)
+
+chabundclust23_lm <- lm(log(abs(change_abund_corr)) ~ cluster, data=filter(death_asv, cluster %in% c("2", "3")))
+hist(resid(chabundclust23_lm)) # normal
+plot(predict(chabundclust23_lm), resid(chabundclust23_lm)) # heteroskedastic
+# Switching to welch t-test...
+chabundclust23_welch <- t.test(log(abs(change_abund_corr)) ~ cluster, data=filter(death_asv, cluster %in% c("3", "2")), var.equal=FALSE)
+
+chabundclust13_lm <- lm(log(abs(change_abund_corr)) ~ cluster, data=filter(death_asv, cluster %in% c("1", "3")))
+hist(resid(chabundclust23_lm)) # right-tailed
+plot(predict(chabundclust23_lm), resid(chabundclust23_lm)) # heteroskedastic, pick poison
+# Switching to welch t-test...
+chabundclust13_welch <- t.test(log(abs(change_abund_corr)) ~ cluster, data=filter(death_asv, cluster %in% c("3", "1")), var.equal=FALSE)
+
+chabundclust1_lm <- lm(log(abs(change_abund_corr)) ~ Soil, data=filter(death_asv, cluster %in% c("1")))
+hist(resid(chabundclust1_lm)) # normalish
+plot(predict(chabundclust1_lm), resid(chabundclust1_lm)) # homoskedasticish
+
+chabundclust2_lm <- lm(log(abs(change_abund_corr)) ~ Soil, data=filter(death_asv, cluster %in% c("2")))
+hist(resid(chabundclust2_lm)) # normal
+plot(predict(chabundclust2_lm), resid(chabundclust2_lm)) # homoskedastic
+
+chabundclust3_lm <- lm(log(abs(change_abund_corr)) ~ Soil, data=filter(death_asv, cluster %in% c("3")))
+hist(resid(chabundclust3_lm)) # normal
+plot(predict(chabundclust3_lm), resid(chabundclust3_lm)) # homoskedastic
+
+# P adjustment
+p.adjust(p=c(summary(chabundclust1_lm)$coefficients[2,4], summary(chabundclust2_lm)$coefficients[2,4], summary(chabundclust3_lm)$coefficients[2,4],
+             chabundclust12_welch$p.value, chabundclust23_welch$p.value, chabundclust13_welch$p.value),
+         method="holm", n=6)
+```
+
+## Paprica predictions
+
+```{r}
+# n16S
+n16S_plot <- growth_asv %>% 
+  ggplot(aes(x=cluster, y=log(n16S), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+n16S_plot
+
+# genome size
+genome_plot <- growth_asv %>% 
+  ggplot(aes(x=cluster, y=log(genome_size), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+genome_plot
+
+# npaths
+npath_plot <- growth_asv %>% 
+  ggplot(aes(x=cluster, y=log(npaths_actual), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+npath_plot
+
+# nec
+nec_plot <- growth_asv %>% 
+  ggplot(aes(x=cluster, y=log(nec_actual), fill=Soil, color=cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, alpha=0.5) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+nec_plot
+
+```
+
+### Statistics
+
+n16S:
+
+```{r}
+# NEEDS TO BE REDONE
+n16sclust_lm <- lm(log(n16S) ~ cluster*Soil, data=growth_asv)
+hist(resid(n16sclust_lm)) # NOT normal
+plot(predict(n16sclust_lm), resid(n16sclust_lm)) # heteroskedastic
+# Switching to welch
+# WIP
+```
+
+Genome size:
+
+```{r}
+# NEEDS TO BE REDONE
+genomeclust_lm <- lm(log(genome_size) ~ cluster*Soil, data=growth_asv)
+hist(resid(genomeclust_lm)) # not normal
+plot(predict(genomeclust_lm), resid(genomeclust_lm)) # homoskedastic
+# Switch to non-parametric
+# WIP
+```
+
+## Substrate incorporation
+
+Reformat:
+
+```{r}
+# Incorporation profiles
+incorp <- incorp %>% 
+  right_join(clust) %>% 
+  filter(!is.na(cellulose)) # remove ASVs with no BLAST match
+```
+
+### Number of substrates
+
+Calculate:
+
+```{r}
+# Reformat
+incorp_num <- incorp %>% 
+  inner_join(clust) %>% 
+  group_by(Soil, cluster, substrate_num) %>% 
+  summarize(count=n()) %>% 
+  ungroup()
+incorp_num
+
+# Calculate substrate number
+incorp_num %>% 
+  ggplot(aes(x=substrate_num, y=count, fill=Soil, color=cluster)) +
+  geom_col(position="dodge") +
+  facet_wrap(~cluster) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  theme_test()
+
+# No soil distinction
+incorp_num_nosoil <- incorp %>%
+  inner_join(clust) %>% 
+  select(-Soil) %>% 
+  unique() %>% 
+  group_by(cluster, substrate_num) %>% 
+  summarize(count=n()) %>% 
+  ungroup()
+
+incorp_num_nosoil %>% 
+  ggplot(aes(x=substrate_num, y=count, fill=cluster)) +
+  geom_col(position="dodge") +
+  facet_wrap(~cluster) +
+  scale_fill_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  theme_test()
+```
+
+### Statistics
+
+```{r}
+# Reformat
+# Each column should be a cluster, each row a number of substrates
+incorpnum_mx <- incorp_num_nosoil %>%
+  select(cluster, substrate_num, count) %>% 
+  pivot_wider(names_from=cluster, values_from=count) %>% 
+  column_to_rownames(var="substrate_num") %>% 
+  as.matrix()
+
+incorpnum_mx # many cells below 20
+rowSums(incorpnum_mx) # fairly high variability
+colSums(incorpnum_mx) # fairly high variability
+
+# Fisher exact tests
+# Contrasts
+incorpnum12_fish <- fisher.test(incorpnum_mx[,1:2], simulate.p.value = TRUE, B = 1e6) # cluster 1 vs 2
+incorpnum13_fish <- fisher.test(incorpnum_mx[,c(1,3)], simulate.p.value = TRUE, B = 1e6) # cluster 1 vs 3
+incorpnum23_fish <- fisher.test(incorpnum_mx[,2:3], simulate.p.value = TRUE, B = 1e6) # cluster 2 vs 3
+# Multiple test adjustment
+p.adjust(p=c(incorpnum12_fish$p.value, incorpnum13_fish$p.value, incorpnum23_fish$p.value), method="holm", n=3)
+```
+
+## Substrate preference
+
+```{r}
+# Reformat
+incorp_long <- incorp %>% 
+  inner_join(clust) %>% 
+  pivot_longer(cellulose:xylose, names_to="substrate", values_to="labelled") %>% 
+  pivot_longer(cellulose_firstday:xylose_firstday, names_to="dummy", values_to="first_day") %>% 
+  filter(!is.na(first_day)) %>% 
+  select(-dummy, -substrate_num,)
+incorp_long
+
+incorp_pref <- incorp_long %>% 
+  filter(labelled=="yes") %>% 
+  group_by(Soil, cluster, substrate) %>% 
+  summarize(count = n()) %>% 
+  ungroup()
+incorp_pref
+
+incorp_pref_nosoil <- incorp_long %>% 
+  select(-Soil) %>% 
+  unique() %>% 
+  filter(labelled=="yes") %>% 
+  group_by(cluster, substrate) %>% 
+  summarize(count = n()) %>% 
+  ungroup()
+incorp_pref_nosoil
+```
+
+Visualize:
+
+```{r}
+incorp_pref %>% 
+  ggplot(aes(x=substrate, y=count, color=cluster, fill=Soil)) +
+  geom_col(position="dodge") +
+  facet_wrap(~cluster) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  theme_test()
+
+incorp_pref_nosoil %>% 
+  ggplot(aes(x=substrate, y=count, fill=cluster)) +
+  geom_col(position="dodge") +
+  facet_wrap(~cluster) +
+  scale_fill_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+### Statistics
+
+```{r}
+# Reformat
+# Each column should be a cluster, each row a number of substrates
+incorppref_mx <- incorp_pref_nosoil %>%
+  select(cluster, substrate, count) %>% 
+  pivot_wider(names_from=cluster, values_from=count) %>% 
+  column_to_rownames(var="substrate") %>% 
+  as.matrix()
+
+incorppref_mx # large cell values
+rowSums(incorppref_mx) # fairly high variability
+colSums(incorppref_mx) # very high variability
+
+# Fisher exact tests
+# Contrasts
+incorppref12_fish <- fisher.test(incorppref_mx[,1:2], simulate.p.value = TRUE, B = 1e6) # cluster 1 vs 2
+incorppref13_fish <- fisher.test(incorppref_mx[,c(1,3)], simulate.p.value = TRUE, B = 1e6) # cluster 1 vs 3
+incorppref23_fish <- fisher.test(incorppref_mx[,2:3], simulate.p.value = TRUE, B = 1e6) # cluster 2 vs 3
+# Multiple test adjustment
+p.adjust(p=c(incorppref12_fish$p.value, incorppref13_fish$p.value, incorppref23_fish$p.value), method="holm", n=3)
+```
+
+## Memberships
+
+```{r}
+# Taxonomy
+tax <- tax %>% inner_join(clust) %>% 
+  unique()
+
+# Phyla counts
+tax_clust <- tax %>% 
+  group_by(Phylum, Soil, cluster) %>% 
+  summarize(count = n()) %>% 
+  arrange(cluster, -count)
+
+# Visualize
+tax_clust %>% 
+  ggplot(aes(x=reorder(Phylum, -count), y=count, color=cluster, fill=Soil)) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  scale_fill_manual(values=c("white", "grey")) +
+  geom_col(position="dodge") +
+  facet_wrap(~cluster) +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+
+tax_clust %>% 
+  filter(cluster %in% c("2", "3")) %>% 
+  ggplot(aes(x=reorder(Phylum, -count), y=count, color=cluster, fill=Soil)) +
+  scale_color_manual(values=c("#929644", "#9473c4")) +
+  scale_fill_manual(values=c("white", "grey")) +
+  geom_col(position="dodge") +
+  facet_wrap(~cluster) +
+  theme_test() +
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+# Cluster representation in soils
+
+## Total abundances
+
+Reformat:
+
+```{r}
+# Normalized abundances
+abund2 <- abund %>% 
+  mutate(ASV = gsub("Ag[1-3]_|Meadow[1-3]_(.+)", "\\1", label)) %>% 
+  inner_join(pap) %>% ## add paprica predictions
+  filter(Isotope=="12C") %>% 
+  select(Soil, Replicate, ASV, Day, norm_abund, n16S) %>% 
+  mutate(norm_abund_corr = norm_abund/n16S) %>% ## correct for 16S copy number
+  select(everything(), -c(norm_abund, n16S)) %>% 
+  inner_join(clust) ## add cluster memberships
+```
+
+Calculate:
+
+```{r}
+# Calculate cluster totals
+abund_total <- abund2 %>% 
+  group_by(Soil, Day, Replicate, cluster) %>% 
+  summarize(cluster_total = sum(norm_abund_corr)) %>% 
+  ungroup()
+abund_total
+
+# Calculate total abundance averaged over time
+abund_total_avg <- abund_total %>% 
+  group_by(Soil, Replicate, cluster) %>% 
+  summarize(cluster_total = mean(cluster_total)) %>% 
+  ungroup()
+abund_total_avg
+
+# over time
+abund_total0 <- abund_total %>%
+  filter(Day==0)
+abund_total0
+```
+
+Visualize:
+
+```{r}
+# Total abundances
+abund_total %>% 
+  ggplot(aes(x=Day, y=log(cluster_total), color=cluster)) +
+  geom_point() +
+  geom_smooth(aes(color=cluster)) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  facet_wrap(~Soil) +
+  theme_test()
+
+abund_total_avg %>% 
+  ggplot(aes(x=Soil, y=log(cluster_total), color=cluster)) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  geom_jitter(height=0, width=0.1) +
+  theme_test()
+
+abund_total0 %>% 
+  ggplot(aes(x=Soil, y=log(cluster_total), color=cluster)) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  geom_point() +
+  theme_test()
+```
+
+### Statistics
+
+```{r}
+# Overall
+totalclust_lm <- lm(log(cluster_total) ~ cluster*Soil, data=abund_total_avg)
+hist(resid(totalclust_lm)) # not normal
+plot(predict(totalclust_lm), resid(totalclust_lm)) # homoskedastic
+
+# Within soils clusters comparisons
+# Ag
+totalag12_lm <- lm(log(cluster_total) ~ cluster, data=filter(abund_total_avg, Soil=="Ag" & cluster %in% c("1", "2")))
+hist(resid(totalag12_lm)) # too little variation
+plot(predict(totalag12_lm), resid(totalag12_lm)) # homoskedastic
+
+totalag23_lm <- lm(log(cluster_total) ~ cluster, data=filter(abund_total_avg, Soil=="Ag" & cluster %in% c("3", "2")))
+hist(resid(totalag23_lm)) # too little variation
+plot(predict(totalag23_lm), resid(totalag23_lm)) # homoskedastic
+
+totalag13_lm <- lm(log(cluster_total) ~ cluster, data=filter(abund_total_avg, Soil=="Ag" & cluster %in% c("3", "1")))
+hist(resid(totalag13_lm)) # too little variation
+plot(predict(totalag13_lm), resid(totalag13_lm)) # homoskedasticish
+
+# Meadow
+totalmead12_lm <- lm(log(cluster_total) ~ cluster, data=filter(abund_total_avg, Soil=="Meadow" & cluster %in% c("1", "2")))
+hist(resid(totalmead12_lm)) # too little variation
+plot(predict(totalmead12_lm), resid(totalmead12_lm)) # homoskedastic
+
+totalmead23_lm <- lm(log(cluster_total) ~ cluster, data=filter(abund_total_avg, Soil=="Meadow" & cluster %in% c("3", "2")))
+hist(resid(totalmead23_lm)) # too little variation
+plot(predict(totalmead23_lm), resid(totalmead23_lm)) # homoskedastic
+
+totalmead13_lm <- lm(log(cluster_total) ~ cluster, data=filter(abund_total_avg, Soil=="Meadow" & cluster %in% c("3", "1")))
+hist(resid(totalmead13_lm)) # too little variation
+plot(predict(totalmead13_lm), resid(totalmead13_lm)) # homoskedastic
+
+# P adjustment
+p.adjust(p=c(summary(totalag12_lm)$coefficients[2,4], summary(totalag23_lm)$coefficients[2,4], summary(totalag13_lm)$coefficients[2,4],
+             summary(totalmead12_lm)$coefficients[2,4], summary(totalmead23_lm)$coefficients[2,4], summary(totalmead13_lm)$coefficients[2,4]),
+         method="holm", n=6)
+```
+
+## Proportions
+
+Calculations:
+
+```{r}
+# Calculate overall totals
+abund_overall <- abund_total %>% 
+  group_by(Soil, Day, Replicate) %>% 
+  summarize(overall_total = sum(cluster_total)) %>% 
+  ungroup()
+abund_overall
+
+# Calculate proportions
+# By day
+abund_prop_day <- abund_total %>% 
+  left_join(abund_overall) %>% 
+  mutate(prop = cluster_total/overall_total)
+abund_prop_day
+
+# Day 0, 15, 30
+abund_prop01530 <- abund_total %>% 
+  filter(Day %in% c(0, 15, 30)) %>% 
+  left_join(abund_overall) %>% 
+  mutate(prop = cluster_total/overall_total)
+abund_prop01530
+
+# Averaged across time
+abund_overall_avg <- abund_overall %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(overall_total = mean(overall_total)) %>% 
+  ungroup()
+abund_overall_avg
+
+abund_prop_avg <- abund_total %>% 
+  left_join(abund_overall_avg) %>% 
+  group_by(Soil, Replicate, cluster) %>% 
+  summarize(cluster_total = mean(cluster_total), # average across time
+            overall_total = mean(overall_total)) %>% 
+  mutate(prop = cluster_total/overall_total)
+abund_prop_avg
+```
+
+Visualize:
+
+```{r}
+abund_prop_day %>%  
+  ggplot(aes(x=Day, y=prop, color=cluster)) +
+  geom_jitter(width=0.1, height=0) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  facet_wrap(~Soil) +
+  geom_smooth(linetype=2) +
+  theme_test()
+
+abund_prop_avg %>% 
+  ggplot(aes(x=Soil, y=prop, color=cluster)) +
+  geom_jitter(width=0.1, height=0) +
+  scale_color_manual(values=c("#c75d65", "#929644", "#9473c4")) +
+  theme_test()
+```
+
+### Statistics
+
+Proportion overall:
+
+```{r}
+propclust_lm <- lm(prop ~ cluster*Soil, data=abund_prop_avg)
+hist(resid(propclust_lm)) # normalish
+plot(predict(propclust_lm), resid(propclust_lm)) # homoskedasticish
+anova(propclust_lm)
+# Check term order
+propclust_lm <- lm(prop ~ Soil*cluster, data=abund_prop_avg)
+anova(propclust_lm) # same
+
+# Contrasts
+propclust12ag_lm <- lm(prop ~ cluster, data=filter(abund_prop_avg, cluster %in% c("1", "2") & Soil=="Ag"))
+hist(resid(propclust12ag_lm)) # normal
+plot(predict(propclust12ag_lm), resid(propclust12ag_lm)) # homoskedasticish
+
+propclust23ag_lm <- lm(prop ~ cluster, data=filter(abund_prop_avg, cluster %in% c("3", "2") & Soil=="Ag"))
+hist(resid(propclust23ag_lm)) # normalish
+plot(predict(propclust23ag_lm), resid(propclust23ag_lm)) # homoskedasticish
+
+propclust13ag_lm <- lm(prop ~ cluster, data=filter(abund_prop_avg, cluster %in% c("3", "1") & Soil=="Ag"))
+hist(resid(propclust13ag_lm)) # normalish
+plot(predict(propclust13ag_lm), resid(propclust13ag_lm)) # homoskedasticish
+
+propclust12mead_lm <- lm(prop ~ cluster, data=filter(abund_prop_avg, cluster %in% c("1", "2") & Soil=="Meadow"))
+hist(resid(propclust12mead_lm)) # normal
+plot(predict(propclust12mead_lm), resid(propclust12mead_lm)) # homoskedasticish
+
+propclust23mead_lm <- lm(prop ~ cluster, data=filter(abund_prop_avg, cluster %in% c("3", "2") & Soil=="Meadow"))
+hist(resid(propclust23mead_lm)) # normalish
+plot(predict(propclust23mead_lm), resid(propclust23mead_lm)) # homoskedasticish
+
+propclust13mead_lm <- lm(prop ~ cluster, data=filter(abund_prop_avg, cluster %in% c("3", "1") & Soil=="Meadow"))
+hist(resid(propclust13mead_lm)) # normalish
+plot(predict(propclust13mead_lm), resid(propclust13mead_lm)) # homoskedasticish
+
+propclust1_lm <- lm(prop ~ Soil, data=filter(abund_prop_avg, cluster %in% c("1")))
+hist(resid(propclust1_lm)) # normalish
+plot(predict(propclust1_lm), resid(propclust1_lm)) # homoskedasticish
+
+propclust2_lm <- lm(prop ~ Soil, data=filter(abund_prop_avg, cluster %in% c("2")))
+hist(resid(propclust2_lm)) # normalish
+plot(predict(propclust2_lm), resid(propclust2_lm)) # homoskedasticish
+
+propclust3_lm <- lm(prop ~ Soil, data=filter(abund_prop_avg, cluster %in% c("3")))
+hist(resid(propclust3_lm)) # normalish
+plot(predict(propclust3_lm), resid(propclust3_lm)) # homoskedasticish
+
+# P adjustment
+p.adjust(p=c(summary(propclust12ag_lm)$coefficient[2,4], summary(propclust23ag_lm)$coefficient[2,4], summary(propclust23ag_lm)$coefficient[2,4],
+             summary(propclust12mead_lm)$coefficient[2,4], summary(propclust23mead_lm)$coefficient[2,4], summary(propclust23mead_lm)$coefficient[2,4],
+             summary(propclust1_lm)$coefficient[2,4], summary(propclust2_lm)$coefficient[2,4], summary(propclust3_lm)$coefficient[2,4]),
+         method="holm", n=9)
+```
+
+# Strategy Parameter
+
+```{r}
+strat_param <- growth2 %>%
+  inner_join(abund2) %>% 
+  mutate(ratio = g/change_abund_corr) %>% 
+  select(Soil, Day, ASV, Replicate, g, change_abund_corr, ratio, norm_abund_corr) %>% 
+  group_by(Soil, Day, Replicate) %>% 
+  summarize(strat = weighted.mean(ratio, norm_abund_corr)) %>% 
+  ungroup()
+strat_param
+
+# Average across days
+strat_param_avg <- strat_param %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(strat = mean(strat)) %>% 
+  ungroup()
+strat_param_avg
+
+# Average per day
+strat_param_days <- strat_param %>% 
+  group_by(Soil, Day) %>% 
+  summarize(strat = mean(strat)) %>% 
+  ungroup()
+strat_param_days
+```
+
+Visualize:
+
+```{r}
+# Average across time
+strat_param_avg %>% 
+  ggplot(aes(x=Soil, y=strat, color=Soil)) +
+  geom_point() +
+  theme_test()
+
+# Average per day
+strat_param_days %>% 
+  ggplot(aes(x=Day, y=strat, color=Soil)) +
+  geom_point() +
+  theme_test()
+```
+
+## Growth efficiency relationship
+
+Calculate:
+
+```{r}
+# Growth efficiency
+greff <- readRDS("../data_intermediate/NIFA_greff.rds")
+
+# Calculate averages
+strat_greff_avg <- inner_join(strat_param, greff) %>% 
+  group_by(Soil, Replicate) %>% # average across days
+  summarize(strat = mean(strat), greff=mean(greff)) %>% 
+  ungroup()
+strat_greff_avg
+
+strat_greff_days <- inner_join(strat_param, greff) %>% 
+  group_by(Soil, Day) %>% # average across days
+  summarize(strat = mean(strat), greff=mean(greff)) %>% 
+  ungroup()
+strat_greff_days
+```
+
+Visualize:
+
+```{r}
+strat_greff_avg %>% 
+  ggplot(aes(x=log(strat), y=log(greff), color=Soil)) +
+  geom_point() +
+  theme_test()
+
+strat_greff_days %>% 
+  ggplot(aes(x=log(strat), y=greff, color=Soil)) +
+  geom_point() +
+  theme_test()
+```
+
+### Statistics
+
+```{r}
+# Correlations
+cor.test(strat_greff_avg$greff, log(strat_greff_avg$strat), method="pearson")
+cor.test(strat_greff_days$greff, log(strat_greff_days$strat), method="pearson")
+```
+
+## Respiration relationship
+
+Respiration rates:
+
+```{r}
+# Time (days) elapsed per time point
+time_steps <- data.frame(time_step = c(0, rep(1, 11), rep(2, 8), 3),
+                         Day = sort(unique(resp$Day)))
+
+# Calculate total respiration rates
+resp_rate <- resp %>% 
+  pivot_wider(id_cols=c(Microcosm, Soil, Litter, Day), names_from=Measurement, values_from=mg_co2) %>% 
+  mutate(mz45 = if_else(is.na(mz45), 0, mz45), # replace NAs with 0 (below threshold)
+         mg_total = mz44 + mz45) %>% # add labelled and unlabelled
+  left_join(time_steps) %>% 
+  filter(Day != 0) %>% 
+  mutate(resp_rate = mg_total/time_step) %>% # calculate respiration rates
+  filter(Litter=="litter") %>% 
+  select(Microcosm, Soil, Day, resp_rate) %>% 
+  mutate(Replicate = case_when(Microcosm %in% c(185, 188, 191, 194) ~ 1, # add replicates
+                               Microcosm %in% c(186, 189, 192, 195) ~ 2,
+                               Microcosm %in% c(187, 190, 193, 196) ~ 3,)) %>% 
+  select(-Microcosm, Soil, Replicate, Day, resp_rate)
+resp_rate
+  
+# Combine with strategy parameter
+strat_resp <- strat_param %>% 
+  inner_join(resp_rate) 
+strat_resp
+
+# Average over time
+strat_resp_avg <- strat_resp %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(resp_rate = mean(resp_rate), strat = mean(strat)) %>% 
+  ungroup()
+strat_resp_avg
+
+# By Day
+strat_resp_days <- strat_resp %>% 
+  group_by(Soil, Day) %>% 
+  summarize(resp_rate = mean(resp_rate), strat = mean(strat)) %>% 
+  ungroup()
+strat_resp_days
+```
+
+Visualize:
+
+```{r}
+strat_resp_avg %>% 
+  ggplot(aes(x=strat, y=resp_rate)) +
+  geom_point() +
+  theme_test()
+
+strat_resp_days %>% 
+  ggplot(aes(x=strat, y=resp_rate)) +
+  geom_point() +
+  theme_test()
+```
+
+# Weighted g parameter
+
+```{r}
+wg_param <- growth %>% 
+  inner_join(abund2) %>% 
+  group_by(Soil, Replicate, Day) %>% 
+  summarize(wg = weighted.mean(g, norm_abund_corr)) %>% 
+  ungroup()
+wg_param
+
+wg_param_avg <- wg_param %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(wg = mean(wg)) %>% 
+  ungroup()
+wg_param_avg
+```
+
+Visualize:
+
+```{r}
+wg_param %>% 
+  ggplot(aes(x=Day, y=wg, color=Soil)) +
+  geom_point() +
+  theme_test()
+
+wg_param_avg %>% 
+  ggplot(aes(x=Soil, y=wg, color=Soil)) +
+  geom_point() +
+  theme_test()
+```
+
+# R:C parameter
+
+```{r}
+# Calculate 2:3 ratio
+rc_param <- abund_total %>% 
+  filter(cluster %in% c("3", "2")) %>%
+  pivot_wider(id_cols=c(Soil, Day, Replicate), names_from = cluster, values_from = cluster_total) %>% 
+  mutate(rc = `2`/`3`)
+rc_param
+
+# Average across time
+rc_param_avg <- rc_param %>% 
+  group_by(Soil, Replicate) %>% 
+  summarize(rc = mean(rc)) %>% 
+  ungroup()
+rc_param_avg
+```
+
+Visualize:
+
+```{r}
+rc_param %>% 
+  ggplot(aes(x=Day, y=rc, color=Soil)) +
+  geom_point() +
+  theme_test()
+
+rc_param_avg %>%
+  ggplot(aes(x=Soil, y=rc, color=Soil)) +
+  geom_point() +
+  theme_test()
+```
+
+## WIP Statistics
+
+```{r}
+
+```

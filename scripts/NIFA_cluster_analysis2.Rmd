@@ -1,0 +1,255 @@
+---
+title: "Untitled"
+author: "Cassandra Wattenburger"
+date: "5/2/2023"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+## Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+
+sessionInfo()
+```
+
+# Import data
+
+```{r}
+## Clusters
+clust <- readRDS("../data_intermediate/NIFA_clusters.rds") %>% 
+  mutate(cluster = as.character(cluster))
+
+## Growth
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+
+## Death
+death <- readRDS("../data_intermediate/NIFA_dests_final_ind.rds")
+
+## Paprica estimates
+pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+
+## Incorporation profiles
+incorp <- readRDS("../data_intermediate/NIFA_incorp_profiles.rds")
+
+## Normalized abundances
+abund <- readRDS("../data_intermediate/NIFA_norm_prepped.rds")
+
+# Growth efficiency
+greff <- readRDS("../data_intermediate/NIFA_greff.rds")
+
+# Respiration
+resp <- readRDS("../data_intermediate/NIFA_repiration.rds")
+```
+
+Reformat and combine:
+
+```{r}
+## Growth estimates
+growth <- inner_join(growth, pap) %>% ## add paprica predictions
+  mutate(start_abund_corr = start_abund/n16S, ## correct for 16S copy number
+         end_abund_corr = end_abund/n16S,
+         change_abund_corr = change_abund/n16S) %>% 
+  select(everything(), -c(start_abund, end_abund, change_abund)) %>% 
+  inner_join(clust) ## add cluster memberships
+
+## Death estimates
+death <- inner_join(death, pap) %>% ## add paprica predictions
+  mutate(start_abund_corr = start_abund/n16S, ## correct for 16S copy number
+         end_abund_corr = end_abund/n16S,
+         change_abund_corr = change_abund/n16S) %>% 
+  select(everything(), -c(start_abund, end_abund, change_abund)) %>% 
+  inner_join(clust) ## add cluster memberships
+
+## Normalized abundances
+abund <- abund %>% 
+  mutate(ASV = gsub("Ag[1-3]_|Meadow[1-3]_(.+)", "\\1", label)) %>% 
+  inner_join(pap) %>% ## add paprica predictions
+  filter(Isotope=="12C") %>% 
+  select(label, Soil, Replicate, ASV, Day, norm_abund, n16S) %>% 
+  mutate(norm_abund_corr = norm_abund/n16S) %>% ## correct for 16S copy number
+  select(everything(), -c(norm_abund, n16S)) %>% 
+  inner_join(clust) ## add cluster memberships
+
+## Incorporation profiles
+incorp <- incorp %>% 
+  right_join(clust)
+```
+
+Calculate respiration rates:
+
+```{r}
+# Time (days) elapsed per time point
+time_steps <- data.frame(time_step = c(0, rep(1, 11), rep(2, 8), 3),
+                         Day = sort(unique(resp$Day)))
+
+# Calculate respiration rate mg/days
+resp_rate <- resp %>% 
+  left_join(time_steps) %>% 
+  filter(Day != 0) %>% 
+  mutate(resp_rate_c = mg_c / time_step,
+         resp_rate_co2 = mg_co2 / time_step)
+```
+
+
+# Ratio g:deltaN
+
+Based on cluster 1 and 3 differences in ag and meadow soils, relevant to respiration/efficiency?
+
+Calculate weighted g/deltaN:
+
+```{r}
+# ASV ratios
+ratio_gdeltaN <- abund %>% 
+  inner_join(growth) %>% 
+  mutate(gdeltaN = g/change_abund_corr) %>% # calculate ratio
+  select(Soil, Day, Replicate, ASV, norm_abund_corr, g, change_abund_corr, gdeltaN)
+  
+ratio_gdeltaN 
+
+# ASV-level weighted means
+ratio_gdeltaN_wm <- ratio_gdeltaN %>% 
+  group_by(Soil, Day, Replicate, ASV) %>% # ASV averages
+  summarize(norm_abund_corr = mean(norm_abund_corr),
+            change_abund_corr = mean(change_abund_corr),
+            g = mean(g),
+            gdeltaN = mean(gdeltaN)) %>% 
+  ungroup() %>% 
+  group_by(Soil, Day, Replicate) %>% 
+  summarize(wm_gdeltaN = weighted.mean(gdeltaN, norm_abund_corr)) %>% # weighted mean ratio
+  ungroup()
+
+ratio_gdeltaN_wm
+
+# Average over time
+ratio_gdeltaN_daywm <- ratio_gdeltaN %>% 
+  group_by(Soil, Repl)
+```
+
+Visualize:
+
+```{r}
+ratio_gdeltaN_wm %>% 
+  ggplot(aes(x=Day, y=wm_gdeltaN, shape=Soil, linetype=Soil)) +
+  geom_point(size=3) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_smooth(color="black") +
+  scale_linetype_manual(values=c(2,1)) +
+  theme_test() +
+  theme(axis.text = element_text(size=12),
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12))
+```
+
+Statistics:
+
+```{r}
+wm_gdeltaN_lm <- lm(log(wm_gdeltaN) ~ Soil + Day + Soil*Day, data=ratio_gdeltaN_wm)
+hist(resid(wm_gdeltaN_lm))
+plot(predict(wm_gdeltaN_lm), resid(wm_gdeltaN_lm))
+anova(wm_gdeltaN_lm)
+```
+
+# g:deltaN vs greff
+
+```{r}
+# Overall
+x <- ratio_gdeltaN_wm %>% 
+  inner_join(greff) %>% 
+  group_by(Soil, Replicate) %>% # average days
+  summarize(wm_gdeltaN = mean(wm_gdeltaN),
+            greff = mean(greff)) %>% 
+  ungroup()
+
+x %>% ggplot(aes(x=log(wm_gdeltaN), y=greff, shape=Soil)) +
+  geom_point(size=3) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.text = element_text(size=12),
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12))
+
+# Over time
+x_day <- ratio_gdeltaN_wm %>% 
+  inner_join(greff) %>%
+  group_by(Soil, Day) %>% 
+  summarize(wm_gdeltaN = mean(wm_gdeltaN),
+            greff = mean(greff)) %>% # average replicates
+  ungroup() 
+
+x_day %>% 
+  ggplot(aes(x=wm_gdeltaN, y=greff, shape=Soil)) +
+  geom_point(size=3) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.text = element_text(size=12),
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=12))
+```
+
+Statistics:
+
+```{r}
+# Overall
+cor.test(x$greff, log(x$wm_gdeltaN), method="pearson")
+
+# Days
+cor.test(x_day$greff, x_day$wm_gdeltaN, method="spearman")
+```
+
+# g:deltaN vs resp rate
+
+```{r}
+# Calculate respiration rate
+resp_rate_combine <- resp_rate %>% 
+  filter(Litter == "litter") %>% 
+  select(Microcosm, Soil, Day, Measurement, time_step, mg_co2) %>% 
+  mutate(Replicate = case_when(Microcosm == 185 | Microcosm==188 ~ 1,
+                               Microcosm == 186 | Microcosm==189 ~ 2,
+                               Microcosm == 187 | Microcosm==190 ~ 3)) %>%
+  pivot_wider(id_cols = c(Microcosm, Soil, Replicate, Day, time_step), names_from=Measurement, values_from=mg_co2) %>% 
+  mutate(mg_co2 = mz44+mz45) %>% 
+  group_by(Soil, Replicate, Day, time_step) %>% 
+  summarize(mg_co2 = mean(mg_co2)) %>% 
+  ungroup() %>% 
+  mutate(resp_rate = mg_co2/time_step)
+  
+resp_rate_combine
+
+# Combine with growth parameter
+resprate_day <- ratio_gdeltaN_wm %>% 
+  inner_join(resp_rate_combine) %>%
+  group_by(Soil, Day) %>% 
+  summarize(wm_gdeltaN = mean(wm_gdeltaN, na.omit=TRUE),
+            resp_rate = mean(resp_rate, na.omit=TRUE)) %>% # average replicates
+  ungroup()
+
+resprate_day
+
+# Combine with growth parameter
+resprate_rep <- ratio_gdeltaN_wm %>% 
+  inner_join(resp_rate_combine) %>%
+  group_by(Soil, Replicate) %>% 
+  summarize(wm_gdeltaN = mean(wm_gdeltaN, na.omit=TRUE),
+            resp_rate = mean(resp_rate, na.omit=TRUE)) %>% # average over time
+  ungroup()
+
+resprate_rep
+```
+
+Visualize:
+
+```{r}
+resprate_day %>% 
+  ggplot(aes(x=wm_gdeltaN, y=resp_rate)) +
+  geom_point() +
+  theme_test()
+```
+

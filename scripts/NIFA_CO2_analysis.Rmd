@@ -134,30 +134,3 @@ t.test(mg ~ Soil, data=filter(resp_totalrm, Litter=="no litter" & Measurement=="
 ```
 
 Not sure what to think. There seems to be a huge amount of variability in the agricultural soil, which hugely decreases the power of the tests.
-
-
-
-
-# SCRAP
-
-Test for autocorrelation in time series:
-
-```{r}
-ts_190M13CO2 <- sample_mg %>% 
-  filter(Microcosm==190 & isotope=="labelled" & molecule=="CO2" & Soil=="Meadow") %>% # isolate Meadow 13CO2 time series
-  filter(Date!="052322") %>% # remove drop out time point for autocorrelation test
-  select(mg) %>% # convert into ts object type
-  as.ts() 
-
-ts_186Ag13CO2 <- sample_mg %>% 
-  filter(Microcosm==186 & isotope=="labelled" & molecule=="CO2" & Soil=="Ag") %>% # isolate Meadow 13CO2 time series
-  filter(Date!="052322") %>% # remove drop out time point for autocorrelation test
-  select(mg) %>% # convert into ts object type
-  as.ts()
-  
-# Autocorrelation
-pacf(ts_190M13CO2)
-pacf(ts_186Ag13CO2)
-```
-
-Could this be used to test for oscillation in bacterial abundance data?
