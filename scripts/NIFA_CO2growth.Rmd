@@ -434,15 +434,39 @@ greff_df %>%
         legend.title = element_text(size=12))
 ```
 
+Nice figure:
+
+```{r, eval=FALSE}
+greff_plot <- greff_df %>% 
+  mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  ggplot(aes(x=Day, y=greff, linetype=Soil)) +
+  geom_smooth(color="black", alpha=0.5) +
+  geom_point(aes(shape=Soil), size=2) +
+  scale_shape_manual(values=c(1,16)) +
+  scale_linetype_manual(values=c(2,1)) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+      axis.text = element_text(size=12),
+      legend.title = element_text(size=14),
+      legend.text = element_text(size=12))
+greff_plot
+```
+
+Export:
+
+```{r, eval=FALSE}
+ggsave(greff_plot, file="../figures/plot_greff.svg", units="mm", height=90, width=180, device="svg")
+```
+
 ## Statistics
 
 ```{r}
-greff_lm <- lm(log(greff) ~ Soil+Day+Soil*Day, data=greff_df)
-hist(resid(greff_lm)) # not normal w/log transform
-plot(predict(greff_lm), resid(greff_lm)) # homoskedastic w/log transform
-# Switch to non-parametric test on log transformed data
-kruskal.test(log(greff) ~ Soil, data=greff_df)
-kruskal.test(log(greff) ~ Day, data=greff_df)
+greff_lm <- lm(greff ~ Soil*Day, data=greff_df)
+hist(resid(greff_lm)) # normal
+plot(predict(greff_lm), resid(greff_lm)) # heteroskedastic
+# Switch to welch
+oneway.test(greff ~ Soil, data=greff_df, var.equal=FALSE)
+oneway.test(greff ~ Day, data=greff_df, var.equal=FALSE)
 ```
 
 Export growth efficiency calculations:
