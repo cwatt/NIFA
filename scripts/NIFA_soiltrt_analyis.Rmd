@@ -140,7 +140,30 @@ kruskal.test(log(richness) ~ Soil, data=richness)
 kruskal.test(richness ~ Day, data=richness)
 ```
 
-Total unique ASVs with growht/death estimates:
+Nice figure:
+
+```{r, eval=FALSE}
+rich_plot <- richness %>% 
+  mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  filter(Isotope=="12C") %>% 
+  ggplot(aes(x=Day, y=richness, shape=Soil)) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_point(size=2) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+    axis.text = element_text(size=12),
+    legend.title = element_text(size=14),
+    legend.text = element_text(size=12))
+rich_plot
+```
+
+Export:
+
+```{r, eval=FALSE}
+ggsave(rich_plot, file="../figures/suppfig_richness.svg", units="mm", height=90, width=180, device="svg")
+```
+
+Total unique ASVs with growth/death estimates:
 
 ```{r}
 # Growth
@@ -288,12 +311,34 @@ Visualize:
 ```{r}
 # Visualize
 plot_ordination(physeq2, nmds_wuni, color="Day", shape="Soil") +
-  labs(title="Unweighted unifrac") +
+  geom_point(size=2) +
+  labs(title="Weighted unifrac") +
   theme_test() 
 
 plot_ordination(physeq2, nmds_uni, color="Day", shape="Soil") +
+  geom_point(size=2) +
   labs(title="Unweighted unifrac") +
   theme_test() 
+```
+
+Nice figure:
+
+```{r, eval=FALSE}
+wuni_plot <- plot_ordination(physeq2, nmds_wuni, color="Day", shape="Soil") +
+  geom_point(size=2) +
+  scale_shape_manual(values=c(1, 16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+    axis.text = element_text(size=12),
+    legend.title = element_text(size=14),
+    legend.text = element_text(size=12))
+wuni_plot
+```
+
+Export:
+
+```{r, eval=FALSE}
+ggsave(wuni_plot, file="../figures/suppfig_betadiv.svg", units="mm", width=180, height=90, device="svg")
 ```
 
 ### Statistics

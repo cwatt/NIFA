@@ -941,6 +941,37 @@ tax_clust %>%
   theme(axis.text.x = element_text(angle=45, hjust=1))
 ```
 
+Nice figure:
+
+```{r, eval=FALSE}
+phylo_plot <- tax_clust %>% 
+  mutate(Cluster = case_when(cluster == "1" ~ "Competitor",
+                             cluster == "2" ~ "Scarcity",
+                             cluster == "3" ~ "Ruderal"),
+         Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
+         Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  ggplot(aes(x=reorder(Phylum, -count), y=count, color=Cluster, fill=Soil)) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_fill_manual(values=c("white", "grey")) +
+  geom_col(position="dodge") +
+  facet_wrap(~Cluster, nrow=3) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+    axis.text = element_text(size=12),
+    axis.text.x = element_text(angle=45, hjust=1),
+    legend.title = element_text(size=14),
+    axis.title.x = element_blank(),
+    strip.text = element_text(size = 12),
+    legend.text = element_text(size=12))
+phylo_plot
+```
+
+Export:
+
+```{r, eval=FALSE}
+ggsave(phylo_plot, file="../figures/suppfig_phylomemb.svg", units="mm", height=180, width=120, device="svg")
+```
+
 # Cluster representation
 
 ## Total abundances
@@ -1147,7 +1178,7 @@ prop0_plot
 
 Export:
 
-```{r}
+```{r, eval=FALSE}
 ggsave(prop0_plot, file="../figures/fig_abundprop0.svg", units="mm", width=180, height=90, device="svg")
 ```
 
@@ -1158,7 +1189,7 @@ Proportion day 0:
 ```{r}
 prop0_lm <- lm(prop ~ cluster*Soil, data=abund_prop0)
 hist(resid(prop0_lm)) # normalish
-plot(predict(prop0_lm), resid(propclust_lm)) # heteroskedastic
+plot(predict(prop0_lm), resid(prop0_lm)) # heteroskedastic
 # Switching to welch tests, interested in differences between soils
 prop1_welch <- t.test(prop ~ Soil, data=filter(abund_prop0, cluster=="1"), var.equal=FALSE)
 prop2_welch <- t.test(prop ~ Soil, data=filter(abund_prop0, cluster=="2"), var.equal=FALSE)
@@ -1230,7 +1261,6 @@ richclust_welch <- oneway.test(log(richness) ~ cluster, data=filter(rich_clust),
 # P adjustment
 p.adjust(p=c(rich1_welch$p.value, rich2_welch$p.value, rich3_welch$p.value, richclust_welch$p.value), method="holm", n=4)
 ```
-
 # Ratio parameters
 
 ## R:C
@@ -1332,7 +1362,7 @@ cs_param_avg %>%
   theme_test()
 ```
 
-# Strategies vs carbon
+# Clusters vs carbon
 
 ```{r}
 # Combine parameters and explore
@@ -1370,6 +1400,7 @@ resprate <- resp %>%
   filter(Litter=="litter") %>% # remove samples without litter added
   select(Soil, Day, Replicate, Measurement, mg_co2) %>%
   pivot_wider(id_cols=c(Soil, Day, Replicate), names_from=Measurement, values_from=mg_co2) %>% 
+  drop_na() %>% 
   inner_join(time_steps) %>% 
   mutate(mgCO2 = mz44 + mz45,
          mgCO2_day = mgCO2/time_step) %>% 
@@ -1472,6 +1503,43 @@ params_greffresp %>%
   theme_test()
 ```
 
+Nice figure:
+
+```{r, eval=FALSE}
+rcsgreff_plot <- params_greffresp %>% 
+  mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  ggplot(aes(x=r_cs, y=log(greff))) +
+  geom_point(aes(shape=Soil), size=2) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_smooth(method="lm", color="black", linetype=2) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+    axis.text = element_text(size=12),
+    legend.title = element_text(size=14),
+    legend.text = element_text(size=12))
+rcsgreff_plot
+```
+
+Nice figures:
+
+```{r, eval=FALSE}
+ggsave(rcsgreff_plot, file="../figures/fig_rcsgreff.svg", units="mm", height=90, width=180, device="svg")
+```
+
+#### Statistics
+
+```{r}
+rcsgreff_avg <- params_greffresp %>% 
+  group_by(Soil, Day) %>% 
+  summarize(greff = mean(greff),
+            mgco2_day = mean(mgCO2_day),
+            r_cs = mean(r_cs)) %>% 
+  ungroup()
+
+cor.test(rcsgreff_avg$r_cs, log(rcsgreff_avg$greff))
+```
+
+
 ### Respiration rate
 
 Individual:
@@ -1481,13 +1549,7 @@ params_greffresp %>%
   ggplot(aes(x=c_abund, y=mgCO2_day)) +
   geom_point(aes(shape=Soil)) +
   scale_shape_manual(values=c(1,16)) +
-  geom_smooth(method="lm", color="black", aes(linetype=Soil)) +
-  theme_test()
-
-params_greffresp %>% 
-  ggplot(aes(x=r_abund, y=mgCO2_day)) +
-  geom_point(aes(shape=Soil)) +
-  scale_shape_manual(values=c(1,16)) +
+  geom_smooth(method="lm", color="black", linetype=3) +
   geom_smooth(method="lm", color="black", aes(linetype=Soil)) +
   theme_test()
 
@@ -1495,6 +1557,15 @@ params_greffresp %>%
   ggplot(aes(x=s_abund, y=mgCO2_day)) +
   geom_point(aes(shape=Soil)) +
   scale_shape_manual(values=c(1,16)) +
+  geom_smooth(method="lm", color="black", linetype=3) +
+  geom_smooth(method="lm", color="black", aes(linetype=Soil)) +
+  theme_test()
+
+params_greffresp %>% 
+  ggplot(aes(x=r_abund, y=mgCO2_day)) +
+  geom_point(aes(shape=Soil)) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_smooth(method="lm", color="black", linetype=3) +
   geom_smooth(method="lm", color="black", aes(linetype=Soil)) +
   theme_test()
 
@@ -1502,6 +1573,7 @@ params_greffresp %>%
   ggplot(aes(x=c, y=mgCO2_day)) +
   geom_point(aes(shape=Soil)) +
   scale_shape_manual(values=c(1,16)) +
+  geom_smooth(method="lm", color="black", linetype=3) +
   geom_smooth(method="lm", color="black", aes(linetype=Soil)) +
   theme_test()
 
@@ -1509,6 +1581,7 @@ params_greffresp %>%
   ggplot(aes(x=s, y=mgCO2_day)) +
   geom_point(aes(shape=Soil)) +
   scale_shape_manual(values=c(1,16)) +
+  geom_smooth(method="lm", color="black", linetype=3) +
   geom_smooth(method="lm", color="black", aes(linetype=Soil)) +
   theme_test()
 
@@ -1516,6 +1589,7 @@ params_greffresp %>%
   ggplot(aes(x=r, y=mgCO2_day)) +
   geom_point(aes(shape=Soil)) +
   scale_shape_manual(values=c(1,16)) +
+  geom_smooth(method="lm", color="black", linetype=3) +
   geom_smooth(method="lm", color="black", aes(linetype=Soil)) +
   theme_test()
 ```
@@ -1559,10 +1633,72 @@ params_greffresp %>%
   theme_test()
 ```
 
+Nice figure:
+
+```{r, eval=FALSE}
+rcsresp_plot <- params_greffresp %>% 
+  mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  ggplot(aes(x=r_cs, y=mgCO2_day)) +
+  geom_point(aes(shape=Soil), size=2) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_smooth(method="lm", color="black", linetype=2) +
+  scale_linetype_manual(values=c("dashed", "solid")) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+      axis.text = element_text(size=12),
+      legend.title = element_text(size=14),
+      legend.text = element_text(size=12))
+rcsresp_plot
+```
+
+Export:
+
+```{r, eval=FALSE}
+ggsave(rcsresp_plot, file="../figures/fig_rcsresp.svg", units="mm", height=90, width=180, device="svg")
+```
+
+#### Statistics
+
+```{r}
+rcsgreff_avg
+cor.test(rcsgreff_avg$r_cs, rcsgreff_avg$mgco2_day)
+```
 
 
+# Net change 0-30
 
+Calculate:
 
+```{r}
+net_clust <- abund_total %>% 
+  filter(Day %in% c(0, 30)) %>% 
+  pivot_wider(id_cols=c(Soil, Replicate, cluster), names_from=Day, values_from=cluster_total) %>% 
+  mutate(net = `30`-`0`)
+net_clust
+```
+
+Visualize:
+
+```{r}
+net_clust %>% 
+  ggplot(aes(x=cluster, y=net, shape=Soil)) +
+  geom_jitter(height=0, width=0.1) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test()
+```
+
+## Statistics
+
+```{r}
+net_lm <- lm(net ~ cluster*Soil, data=net_clust)
+hist(resid(net_lm)) # not normal
+plot(predict(net_lm), resid(net_lm)) # heteroskedastic, pick poison'
+# Welch anova
+oneway.test(net ~ Soil, data=net_clust, var.equal=FALSE)
+oneway.test(net ~ cluster, data=net_clust, var.equal = FALSE)
+oneway.test(net ~ cluster, data=filter(net_clust, Soil=="Ag"), var.equal = FALSE)
+oneway.test(net ~ cluster, data=filter(net_clust, Soil=="Meadow"), var.equal = FALSE)
+```
 
 
 
@@ -1573,6 +1709,8 @@ params_greffresp %>%
 
 
 # SCRAPS
+
+
 
 # Strategy Parameter
 

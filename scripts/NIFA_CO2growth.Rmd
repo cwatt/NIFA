@@ -116,7 +116,7 @@ resp_rate %>%
   theme_test()
 ```
 
-#WIP Proportions labelled CO2
+# Proportions labelled CO2
 
 ```{r}
 resp_total <- resp %>% 
@@ -194,11 +194,20 @@ summary(weightedg_lm)
 # Respiration rate x weighted growth rate:
 
 ```{r}
+# separate mz
 weightedg_resprate <- inner_join(weighted_g, resp_rate) %>% 
   filter(Litter=="litter") %>% # remove samples without litter added
   select(everything(), -Litter)
 
 weightedg_resprate
+
+# total
+weightedg_resprate_tot <- weightedg_resprate %>% 
+  pivot_wider(id_cols=c(Soil, Replicate, Day, time_step, weighted_g), names_from = Measurement, values_from=mg_co2) %>% 
+  drop_na() %>% 
+  mutate(mgCO2 = mz44 + mz45,
+         mgCO2_day = mgCO2/time_step)
+weightedg_resprate_tot
 ```
 
 Visualize:
@@ -229,6 +238,44 @@ weightedg_resprate %>%
   geom_smooth(method="lm", linetype=2) +
   theme_test() +
   labs(y="Respiration rate, mz44 (mgCO2/day)", x="w.mean g")
+
+# Combined
+weightedg_resprate_tot %>% 
+  group_by(Soil, Day) %>% 
+  summarize(weighted_g = mean(weighted_g, na.rm=TRUE),
+            mgCO2_day = mean(mgCO2_day)) %>% 
+  ungroup() %>%
+  ggplot(aes(y=mgCO2_day, x=weighted_g)) +
+  geom_point() +
+  geom_smooth(method="lm", linetype=2) +
+  theme_test()
+```
+
+Nice figure:
+
+```{r, eval=FALSE}
+wgresp_plot <- weightedg_resprate_tot %>% 
+  group_by(Soil, Day) %>% 
+  summarize(weighted_g = mean(weighted_g, na.rm=TRUE),
+            mgCO2_day = mean(mgCO2_day)) %>% 
+  ungroup() %>%
+  mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  ggplot(aes(y=mgCO2_day, x=weighted_g)) +
+  geom_point(aes(shape=Soil), size=2) +
+  scale_shape_manual(values=c(1,20)) +
+  geom_smooth(method="lm", linetype=2, color="black") +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+    axis.text = element_text(size=12),
+    legend.title = element_text(size=14),
+    legend.text = element_text(size=12))
+wgresp_plot
+```
+
+Export:
+
+```{r, eval=FALSE}
+ggsave(wgresp_plot, file="../figures/fig_wgresp.svg", units="mm", height=90, width=180, device="svg")
 ```
 
 ## Statistics
@@ -240,6 +287,9 @@ wgrr_avg <- weightedg_resprate %>%
   summarize(weighted_g = mean(weighted_g, na.rm=TRUE),
             resp_rate_co2 = mean(resp_rate_co2, na.rm=TRUE)) %>% 
   ungroup()
+
+# Overall
+cor.test(wgrr_avg$weighted_g, wgrr_avg$resp_rate_co2)
 
 # Labelled
 # Ag
@@ -424,25 +474,20 @@ Visualize:
 ```{r}
 greff_df %>% 
   ggplot(aes(x=Day, y=log(greff), linetype=Soil)) +
-  geom_point(aes(shape=Soil), size=3) +
+  geom_point(aes(shape=Soil), size=2) +
   scale_shape_manual(values=c(1,16)) +
   geom_smooth(color="black") +
   scale_linetype_manual(values=c(2,1)) +
-  theme_test() +
-  theme(axis.text = element_text(size=12),
-        legend.text = element_text(size=12),
-        legend.title = element_text(size=12))
+  theme_test()
 ```
-
-Nice figure:
 
 ```{r, eval=FALSE}
 greff_plot <- greff_df %>% 
-  mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
-  ggplot(aes(x=Day, y=greff, linetype=Soil)) +
-  geom_smooth(color="black", alpha=0.5) +
+  mutate(Soil=if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  ggplot(aes(x=Day, y=log(greff), linetype=Soil)) +
   geom_point(aes(shape=Soil), size=2) +
   scale_shape_manual(values=c(1,16)) +
+  geom_smooth(color="black") +
   scale_linetype_manual(values=c(2,1)) +
   theme_test() +
   theme(axis.title = element_text(size=14),
@@ -473,5 +518,74 @@ Export growth efficiency calculations:
 
 ```{r, eval=fALSE}
 saveRDS(greff_df, file="../data_intermediate/NIFA_greff.rds")
+```
+
+# Weighted g vs greff
+
+```{r}
+greff_df %>% 
+  inner_join(weighted_g) %>% 
+  group_by(Soil, Day) %>% 
+  summarize(greff = mean(greff),
+            weighted_g = mean(weighted_g)) %>%
+  ungroup() %>% 
+  ggplot(aes(x=weighted_g, y=log(greff))) +
+  geom_point(aes(shape=Soil)) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_smooth(method="lm", color="black", linetype=2) +
+  theme_test()
+```
+
+Nice figure:
+
+```{r, eval=FALSE}
+wggreff_plot <- greff_df %>% 
+  inner_join(weighted_g) %>% 
+  group_by(Soil, Day) %>% 
+  summarize(greff = mean(greff),
+            weighted_g = mean(weighted_g)) %>%
+  ungroup() %>% 
+  mutate(Soil=if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  ggplot(aes(x=weighted_g, y=log(greff))) +
+  geom_point(aes(shape=Soil), size=2) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_smooth(method="lm", color="black", linetype=2) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+    axis.text = element_text(size=12),
+    legend.title = element_text(size=14),
+    legend.text = element_text(size=12))
+wggreff_plot
+```
+
+```{r, eval=FALSE}
+ggsave(wggreff_plot, file="../figures/fig_wggreff.svg", units="mm", height=90, width=180, device="svg")
+```
+
+#### Statistics
+
+```{r}
+greff_avg <- greff_df %>% 
+  inner_join(weighted_g) %>% 
+  group_by(Soil, Day) %>% 
+  summarize(greff = mean(greff),
+            weighted_g = mean(weighted_g)) %>%
+  ungroup()
+
+cor.test(greff_avg$weighted_g, log(greff_avg$greff))
+```
+
+# Greff vs respiration rate
+
+```{r}
+greff_df %>% 
+  inner_join(weightedg_resprate_tot) %>% 
+  group_by(Soil, Day) %>% 
+  summarize(greff = mean(greff),
+            mgCO2_day = mean(mgCO2_day)) %>% 
+  ungroup() %>%
+  ggplot(aes(x=mgCO2_day, y=log(greff))) +
+  geom_point() +
+  theme_test()
 ```
 

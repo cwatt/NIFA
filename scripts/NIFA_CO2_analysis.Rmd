@@ -48,6 +48,32 @@ resp_rate %>%
   theme_test()
 ```
 
+Nice figure:
+
+```{r, eval=FALSE}
+resprate_plot <- resp_rate %>% 
+  mutate(litter = if_else(Litter=="litter", "litter amendment", "no litter"),
+         Soil = if_else(Soil=="Ag", "Agricultural", "Meadow"),
+         Measurement = if_else(Measurement=="mz44", "12C", "13C")) %>% 
+  ggplot(aes(x=Day, y=resp_rate_c, color=Measurement)) +
+  geom_point() +
+  labs(y="CO2 mineralization rate") +
+  facet_wrap(Soil ~ Litter) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+    axis.text = element_text(size=12),
+    legend.title = element_text(size=14),
+    strip.text = element_text(size = 12),
+    legend.text = element_text(size=12))
+resprate_plot
+```
+
+Export:
+
+```{r, eval=FALSE}
+ggsave(resprate_plot, file="../figures/suppfig_resprate.svg", units="mm", height=180, width=200, device="svg")
+```
+
 # Total respiration
 
 ```{r}
@@ -69,6 +95,34 @@ resp_total %>%
   facet_wrap(~Litter) +
   labs(title="Total C respiration") +
   theme_test()
+```
+
+Nice figure:
+
+```{r, eval=FALSE}
+ctotal_plot <- resp_total %>% 
+  filter(molecule=="c") %>% 
+  mutate(litter = if_else(Litter=="litter", "litter amendment", "no litter"),
+         Soil = if_else(Soil=="Ag", "Agricultural", "Meadow"),
+         Measurement = if_else(Measurement=="mz44", "12C", "13C")) %>%
+  ggplot(aes(x=Soil, y=mg, color=Measurement)) +
+  geom_jitter(height=0, width=0.1) +
+  geom_vline(xintercept = 0.1) +
+  facet_wrap(~Litter) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+    axis.text = element_text(size=12),
+    legend.title = element_text(size=14),
+    strip.text = element_text(size = 12),
+    legend.text = element_text(size=12))
+ctotal_plot
+```
+
+Export:
+
+```{r, eval=FALSE}
+ggsave(ctotal_plot, file="../figures/suppfig_ctotal.svg", units="mm", height=90, width=180, 
+       device="svg")
 ```
 
 ## Statistics
