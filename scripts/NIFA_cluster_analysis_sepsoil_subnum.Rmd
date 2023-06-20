@@ -15,7 +15,13 @@ knitr::opts_chunk$set(message = FALSE)
 ## Clear working directory, load in packages, generate package info
 rm(list=ls())
 
-library("tidyverse")
+#library("tidyverse") # deseq2 install broke and can't be bothered to troubleshoot
+library("tidyr")
+library("dplyr")
+library("tibble")
+library("readr")
+library("forcats")
+library("ggplot2")
 
 sessionInfo()
 ```
@@ -570,7 +576,7 @@ diedprop_plot <- clust_grewdied_prop %>%
          Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
          Soil = if_else(Soil=="Ag", "Agriculture", "Meadow")) %>% 
   ggplot(aes(x=Cluster, y=prop_died, fill=Soil, color=Cluster)) +
-  geom_point(aes(shape=Soil), size=2) +
+  geom_jitter(aes(shape=Soil), size=4, width=0.1, height=0) +
     scale_fill_manual(values=c("white", "gray")) +
   scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
   scale_shape_manual(values=c(1,16)) +
@@ -765,16 +771,18 @@ subnum_plot <- incorp_num_nice %>%
   scale_fill_manual(values=c("#9473c4", "#929644", "#c75d65")) +
   theme_test() +
   theme(axis.title = element_text(size=14),
-    axis.text = element_text(size=12),
-    legend.title = element_text(size=14),
-    legend.text = element_text(size=12))
+        axis.title.x = element_blank(),
+        axis.text = element_text(size=12),
+        axis.text.x = element_blank(),
+        legend.title = element_text(size=14),
+        legend.text = element_text(size=12))
 subnum_plot
 ```
 
 Export figure:
 
 ```{r, eval=FALSE}
-ggsave(subnum_plot, file="../figures/fig_subnum.svg", units="mm", height=90, width=180, device="svg") 
+ggsave(subnum_plot, file="../figures/fig_subnum.svg", units="mm", height=50, width=120, device="svg") 
 ```
 
 ### Statistics
@@ -871,7 +879,7 @@ subpref_plot <- incorp_pref_nice %>%
   theme(axis.title = element_text(size=14),
         axis.title.x = element_blank(),
         axis.text = element_text(size=12),
-        axis.text.x = element_text(angle=45, hjust=1),
+        axis.text.x = element_blank(),
         legend.title = element_text(size=14),
         legend.text = element_text(size=12))
 subpref_plot
@@ -880,7 +888,7 @@ subpref_plot
 Export plot:
 
 ```{r, eval=FALSE}
-ggsave(subpref_plot, file="../figures/fig_subpref.svg", units="mm", height=90, width=180, device="svg")
+ggsave(subpref_plot, file="../figures/fig_subpref.svg", units="mm", height=50, width=120, device="svg")
 ```
 
 ### Statistics
@@ -951,25 +959,26 @@ phylo_plot <- tax_clust %>%
          Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
          Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
   ggplot(aes(x=reorder(Phylum, -count), y=count, color=Cluster, fill=Soil)) +
+  geom_col() +
   scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
   scale_fill_manual(values=c("white", "grey")) +
-  geom_col(position="dodge") +
-  facet_wrap(~Cluster, nrow=3) +
+  facet_wrap(Cluster~Soil, nrow=3) +
   theme_test() +
   theme(axis.title = element_text(size=14),
-    axis.text = element_text(size=12),
-    axis.text.x = element_text(angle=45, hjust=1),
+    axis.text = element_text(size=10),
+    axis.text.x = element_text(angle=45, hjust=1, size=8),
     legend.title = element_text(size=14),
+    strip.background = element_blank(),
+    strip.text = element_blank(),
     axis.title.x = element_blank(),
-    strip.text = element_text(size = 12),
-    legend.text = element_text(size=12))
+    legend.position = "none")
 phylo_plot
 ```
 
 Export:
 
 ```{r, eval=FALSE}
-ggsave(phylo_plot, file="../figures/suppfig_phylomemb.svg", units="mm", height=180, width=120, device="svg")
+ggsave(phylo_plot, file="../figures/suppfig_phylomemb.svg", units="mm", height=90, width=120, device="svg")
 ```
 
 # Cluster representation
@@ -1049,10 +1058,10 @@ abund_total0_nice <- abund_total0 %>%
          Cluster = as_factor(Cluster),
          Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"))
 
-abundtotal0_plot <- abund_total0 %>% 
+abundtotal0_plot <- abund_total0_nice %>% 
   ggplot(aes(x=Soil, y=log(cluster_total), color=Cluster, shape=Cluster)) +
   scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
-  geom_jitter(height=0, width=0.2, size=2) +
+  geom_jitter(height=0, width=0.2, size=3) +
   theme_test() +
   theme(axis.title = element_text(size=14),
       axis.text = element_text(size=12),
@@ -1065,7 +1074,7 @@ abundtotal0_plot
 Export:
 
 ```{r, eval=FALSE}
-ggsave(abundtotal0_plot, file="../figures/fig_abundtotal0.svg", units="mm", width=180, height=90, device="svg")
+ggsave(abundtotal0_plot, file="../figures/fig_abundtotal0.svg", units="mm", width=110, height=90, device="svg")
 ```
 
 ### Statistics
@@ -1166,7 +1175,7 @@ abund_prop0_nice <- abund_prop0 %>%
 prop0_plot <- abund_prop0_nice %>% 
   ggplot(aes(x=Soil, y=prop, color=Cluster, shape=Cluster)) +
   scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
-  geom_jitter(height=0, width=0.2, size=2) +
+  geom_jitter(height=0, width=0.2, size=3) +
   theme_test() +
   theme(axis.title = element_text(size=14),
       axis.text = element_text(size=12),
@@ -1179,7 +1188,7 @@ prop0_plot
 Export:
 
 ```{r, eval=FALSE}
-ggsave(prop0_plot, file="../figures/fig_abundprop0.svg", units="mm", width=180, height=90, device="svg")
+ggsave(prop0_plot, file="../figures/fig_abundprop0.svg", units="mm", width=110, height=90, device="svg")
 ```
 
 ### Statistics
@@ -1509,9 +1518,10 @@ Nice figure:
 rcsgreff_plot <- params_greffresp %>% 
   mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
   ggplot(aes(x=r_cs, y=log(greff))) +
-  geom_point(aes(shape=Soil), size=2) +
+  geom_point(aes(shape=Soil), size=3) +
   scale_shape_manual(values=c(1,16)) +
-  geom_smooth(method="lm", color="black", linetype=2) +
+  geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black") +
+  scale_linetype_manual(values=c("dashed", "solid")) +
   theme_test() +
   theme(axis.title = element_text(size=14),
     axis.text = element_text(size=12),
@@ -1536,7 +1546,11 @@ rcsgreff_avg <- params_greffresp %>%
             r_cs = mean(r_cs)) %>% 
   ungroup()
 
+# Overall
 cor.test(rcsgreff_avg$r_cs, log(rcsgreff_avg$greff))
+# Soils
+cor.test(rcsgreff_avg[rcsgreff_avg$Soil=="Ag",]$r_cs, log(rcsgreff_avg[rcsgreff_avg$Soil=="Ag",]$greff))
+cor.test(rcsgreff_avg[rcsgreff_avg$Soil=="Meadow",]$r_cs, log(rcsgreff_avg[rcsgreff_avg$Soil=="Meadow",]$greff))
 ```
 
 
@@ -1639,9 +1653,9 @@ Nice figure:
 rcsresp_plot <- params_greffresp %>% 
   mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
   ggplot(aes(x=r_cs, y=mgCO2_day)) +
-  geom_point(aes(shape=Soil), size=2) +
+  geom_point(aes(shape=Soil), size=3) +
   scale_shape_manual(values=c(1,16)) +
-  geom_smooth(method="lm", color="black", linetype=2) +
+  geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black", alpha=0.3) +
   scale_linetype_manual(values=c("dashed", "solid")) +
   theme_test() +
   theme(axis.title = element_text(size=14),
@@ -1661,19 +1675,28 @@ ggsave(rcsresp_plot, file="../figures/fig_rcsresp.svg", units="mm", height=90, w
 
 ```{r}
 rcsgreff_avg
+
+# overall
 cor.test(rcsgreff_avg$r_cs, rcsgreff_avg$mgco2_day)
+
+# sep soils
+cor.test(rcsgreff_avg[rcsgreff_avg$Soil=="Ag",]$r_cs, rcsgreff_avg[rcsgreff_avg$Soil=="Ag",]$mgco2_day)
+cor.test(rcsgreff_avg[rcsgreff_avg$Soil=="Meadow",]$r_cs, rcsgreff_avg[rcsgreff_avg$Soil=="Meadow",]$mgco2_day)
 ```
 
-
-# Net change 0-30
+# Net cluster changes
 
 Calculate:
 
 ```{r}
 net_clust <- abund_total %>% 
-  filter(Day %in% c(0, 30)) %>% 
+  filter(Day %in% c(0, 10, 21, 30)) %>% 
   pivot_wider(id_cols=c(Soil, Replicate, cluster), names_from=Day, values_from=cluster_total) %>% 
-  mutate(net = `30`-`0`)
+  mutate(net010 = `10`-`0`,
+         net021 = `21`-`0`,
+         net030 = `30`-`0`) %>% 
+  select(Soil, Replicate, cluster, net010, net021, net030) %>% 
+  pivot_longer(c(net010, net021, net030), names_to="time_diff", values_to="net_change")
 net_clust
 ```
 
@@ -1681,210 +1704,46 @@ Visualize:
 
 ```{r}
 net_clust %>% 
-  ggplot(aes(x=cluster, y=net, shape=Soil)) +
+  mutate(cluster = case_when(cluster=="1" ~ "competitor",
+                             cluster=="2" ~ "scarcity",
+                             cluster=="3" ~ "ruderal"),
+         cluster = fct_relevel(cluster, "competitor", "scarcity", "ruderal")) %>% 
+  ggplot(aes(x=time_diff, y=net_change, shape=Soil, color=cluster)) +
   geom_jitter(height=0, width=0.1) +
+  geom_hline(yintercept=0, linetype=2, color="gray") +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
   scale_shape_manual(values=c(1,16)) +
   theme_test()
 ```
 
-## Statistics
+### Statistics
 
 ```{r}
-net_lm <- lm(net ~ cluster*Soil, data=net_clust)
-hist(resid(net_lm)) # not normal
-plot(predict(net_lm), resid(net_lm)) # heteroskedastic, pick poison'
-# Welch anova
-oneway.test(net ~ Soil, data=net_clust, var.equal=FALSE)
-oneway.test(net ~ cluster, data=net_clust, var.equal = FALSE)
-oneway.test(net ~ cluster, data=filter(net_clust, Soil=="Ag"), var.equal = FALSE)
-oneway.test(net ~ cluster, data=filter(net_clust, Soil=="Meadow"), var.equal = FALSE)
-```
+# 0 - 10
+net010_lm <- lm(net_change ~ cluster, data=filter(net_clust, time_diff=="net010"))
+hist(resid(net010_lm)) # normalish
+plot(predict(net010_lm), resid(net010_lm)) # heteroskedastic
+# swtich to welch
+oneway.test(net_change ~ cluster, data=net_clust, var.equal=FALSE)
+# Contrasts
+net010_cs_welch <- t.test(net_change ~ cluster, data=filter(net_clust, time_diff=="net010" & cluster %in% c("1", "2")), var.equal=FALSE)
+net010_cr_welch <- t.test(net_change ~ cluster, data=filter(net_clust, time_diff=="net010" & cluster %in% c("1", "3")), var.equal=FALSE)
+net010_rs_welch <- t.test(net_change ~ cluster, data=filter(net_clust, time_diff=="net010" & cluster %in% c("3", "2")), var.equal=FALSE)
+# p-adjustment
+p.adjust(p=c(net010_cs_welch$p.value, net010_cr_welch$p.value, net010_rs_welch$p.value),
+         method="holm", n=3)
 
+# 0 - 21
+net021_lm <- lm(net_change ~ cluster, data=filter(net_clust, time_diff=="net021"))
+hist(resid(net021_lm)) # normalish
+plot(predict(net010_lm), resid(net010_lm)) # heteroskedastic
+# swtich to welch
+oneway.test(net_change ~ cluster, data=filter(net_clust, time_diff=="net021"), var.equal=FALSE)
 
-
-
-
-
-
-
-
-# SCRAPS
-
-
-
-# Strategy Parameter
-
-```{r}
-strat_param <- growth2 %>%
-  inner_join(abund2) %>% 
-  mutate(ratio = g/change_abund_corr) %>% 
-  select(Soil, Day, ASV, Replicate, g, change_abund_corr, ratio, norm_abund_corr) %>% 
-  group_by(Soil, Day, Replicate) %>% 
-  summarize(strat = weighted.mean(ratio, norm_abund_corr)) %>% 
-  ungroup()
-strat_param
-
-# Average across days
-strat_param_avg <- strat_param %>% 
-  group_by(Soil, Replicate) %>% 
-  summarize(strat = mean(strat)) %>% 
-  ungroup()
-strat_param_avg
-
-# Average per day
-strat_param_days <- strat_param %>% 
-  group_by(Soil, Day) %>% 
-  summarize(strat = mean(strat)) %>% 
-  ungroup()
-strat_param_days
-```
-
-Visualize:
-
-```{r}
-# Average across time
-strat_param_avg %>% 
-  ggplot(aes(x=Soil, y=strat, color=Soil)) +
-  geom_point() +
-  theme_test()
-
-# Average per day
-strat_param_days %>% 
-  ggplot(aes(x=Day, y=strat, color=Soil)) +
-  geom_point() +
-  theme_test()
-```
-
-## Growth efficiency relationship
-
-Calculate:
-
-```{r}
-# Growth efficiency
-greff <- readRDS("../data_intermediate/NIFA_greff.rds")
-
-# Calculate averages
-strat_greff_avg <- inner_join(strat_param, greff) %>% 
-  group_by(Soil, Replicate) %>% # average across days
-  summarize(strat = mean(strat), greff=mean(greff)) %>% 
-  ungroup()
-strat_greff_avg
-
-strat_greff_days <- inner_join(strat_param, greff) %>% 
-  group_by(Soil, Day) %>% # average across days
-  summarize(strat = mean(strat), greff=mean(greff)) %>% 
-  ungroup()
-strat_greff_days
-```
-
-Visualize:
-
-```{r}
-strat_greff_avg %>% 
-  ggplot(aes(x=log(strat), y=log(greff), color=Soil)) +
-  geom_point() +
-  theme_test()
-
-strat_greff_days %>% 
-  ggplot(aes(x=log(strat), y=greff, color=Soil)) +
-  geom_point() +
-  theme_test()
-```
- 
-### Statistics REDO
-
-```{r}
-# Correlations
-cor.test(strat_greff_avg$greff, log(strat_greff_avg$strat), method="pearson")
-cor.test(strat_greff_days$greff, log(strat_greff_days$strat), method="pearson")
-```
-
-## Respiration relationship
-
-Respiration rates:
-
-```{r}
-# Time (days) elapsed per time point
-time_steps <- data.frame(time_step = c(0, rep(1, 11), rep(2, 8), 3),
-                         Day = sort(unique(resp$Day)))
-
-# Calculate total respiration rates
-resp_rate <- resp %>% 
-  pivot_wider(id_cols=c(Microcosm, Soil, Litter, Day), names_from=Measurement, values_from=mg_co2) %>% 
-  mutate(mz45 = if_else(is.na(mz45), 0, mz45), # replace NAs with 0 (below threshold)
-         mg_total = mz44 + mz45) %>% # add labelled and unlabelled
-  left_join(time_steps) %>% 
-  filter(Day != 0) %>% 
-  mutate(resp_rate = mg_total/time_step) %>% # calculate respiration rates
-  filter(Litter=="litter") %>% 
-  select(Microcosm, Soil, Day, resp_rate) %>% 
-  mutate(Replicate = case_when(Microcosm %in% c(185, 188, 191, 194) ~ 1, # add replicates
-                               Microcosm %in% c(186, 189, 192, 195) ~ 2,
-                               Microcosm %in% c(187, 190, 193, 196) ~ 3,)) %>% 
-  select(-Microcosm, Soil, Replicate, Day, resp_rate)
-resp_rate
-  
-# Combine with strategy parameter
-strat_resp <- strat_param %>% 
-  inner_join(resp_rate) 
-strat_resp
-
-# Average over time
-strat_resp_avg <- strat_resp %>% 
-  group_by(Soil, Replicate) %>% 
-  summarize(resp_rate = mean(resp_rate), strat = mean(strat)) %>% 
-  ungroup()
-strat_resp_avg
-
-# By Day
-strat_resp_days <- strat_resp %>% 
-  group_by(Soil, Day) %>% 
-  summarize(resp_rate = mean(resp_rate), strat = mean(strat)) %>% 
-  ungroup()
-strat_resp_days
-```
-
-Visualize:
-
-```{r}
-strat_resp_avg %>% 
-  ggplot(aes(x=strat, y=resp_rate)) +
-  geom_point() +
-  theme_test()
-
-strat_resp_days %>% 
-  ggplot(aes(x=strat, y=resp_rate)) +
-  geom_point() +
-  theme_test()
-```
-
-# Weighted g parameter
-
-```{r}
-wg_param <- growth %>% 
-  inner_join(abund2) %>% 
-  group_by(Soil, Replicate, Day) %>% 
-  summarize(wg = weighted.mean(g, norm_abund_corr)) %>% 
-  ungroup()
-wg_param
-
-wg_param_avg <- wg_param %>% 
-  group_by(Soil, Replicate) %>% 
-  summarize(wg = mean(wg)) %>% 
-  ungroup()
-wg_param_avg
-```
-
-Visualize:
-
-```{r}
-wg_param %>% 
-  ggplot(aes(x=Day, y=wg, color=Soil)) +
-  geom_point() +
-  theme_test()
-
-wg_param_avg %>% 
-  ggplot(aes(x=Soil, y=wg, color=Soil)) +
-  geom_point() +
-  theme_test()
+# 0 - 30
+net030_lm <- lm(net_change ~ cluster, data=filter(net_clust, time_diff=="net030"))
+hist(resid(net021_lm)) # normalish
+plot(predict(net010_lm), resid(net010_lm)) # heteroskedastic
+# swtich to welch
+oneway.test(net_change ~ cluster, data=filter(net_clust, time_diff=="net030"), var.equal=FALSE)
 ```

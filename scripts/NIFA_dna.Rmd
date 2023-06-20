@@ -1,0 +1,96 @@
+---
+title: "NIFA - DNA yield"
+author: "Cassandra Wattenburger"
+date: "5/24/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+```{r}
+library(tidyverse)
+
+sessionInfo()
+
+rm(list=ls())
+```
+
+```{r}
+# import data
+dna <- read_tsv("../data_picogreen/NIFA_dnaconc.tsv") %>% 
+  rename(Microcosm=ucosm)
+dna
+
+meta <- read_tsv("../NIFA_metadata.tsv")
+meta
+```
+
+DNA concentration at tp0:
+
+```{r}
+dna2 <- inner_join(meta, dna) %>% 
+  select(Soil, Isotope, Replicate, Day, dna_conc) %>% 
+  filter(Isotope=="12C")
+dna2
+
+# Convert to dry weight
+  # soils wetted to 50% WHC, for ag that's 11.8% water, for meadow that's 16.2% water
+  # extracted DNA from 0.5 g soil
+dna_dry <- dna2 %>% 
+  mutate(soil_dry = if_else(Soil=="Ag", 1-0.118, 1-0.162),
+         dna_total = (dna_conc*50), # ug/uL in 50 uL total elution
+         dna_gdrysoil = if_else(Soil=="Ag", dna_total/soil_dry, dna_total/soil_dry)) # ug DNA per g dry weight soil
+dna_dry
+```
+
+Visualize:
+
+```{r}
+dna0_plot <- dna_dry %>% 
+  filter(Day==0) %>% 
+  mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  ggplot(aes(x=Soil, y=dna_gdrysoil, shape=Soil)) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_point(size=2) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+    axis.text = element_text(size=12),
+    legend.title = element_text(size=14),
+    legend.text = element_text(size=12))
+dna0_plot
+
+dna_plot <- dna_dry %>% 
+  mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  ggplot(aes(x=Day, y=log(dna_gdrysoil), shape=Soil)) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_point(size=2) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+    axis.text = element_text(size=12),
+    legend.title = element_text(size=14),
+    legend.text = element_text(size=12))
+dna_plot
+```
+
+Export:
+
+```{r, eval=FALSE}
+ggsave(dna_plot, file="../figures/suppfig_dna.svg", units="mm", height=90, width=180, device="svg")
+```
+
+Statistics:
+
+```{r}
+dna_lm <- lm(log(dna_gdrysoil) ~ Soil*Day, data=dna_dry)
+hist(resid(dna_lm)) # normalish
+plot(predict(dna_lm), resid(dna_lm))  # homoskedastic
+anova(dna_lm)
+# check term order
+dna_lm <- lm(log(dna_gdrysoil) ~ Day*Soil, data=dna_dry)
+anova(dna_lm) # no change
+```
+

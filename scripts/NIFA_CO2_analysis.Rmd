@@ -12,7 +12,13 @@ knitr::opts_chunk$set(warning = FALSE)
 ```
 
 ```{r}
-library(tidyverse)
+#library(tidyverse)
+library("tidyr")
+library("dplyr")
+library("tibble")
+library("readr")
+library("forcats")
+library("ggplot2")
 
 sessionInfo()
 
@@ -55,8 +61,8 @@ resprate_plot <- resp_rate %>%
   mutate(litter = if_else(Litter=="litter", "litter amendment", "no litter"),
          Soil = if_else(Soil=="Ag", "Agricultural", "Meadow"),
          Measurement = if_else(Measurement=="mz44", "12C", "13C")) %>% 
-  ggplot(aes(x=Day, y=resp_rate_c, color=Measurement)) +
-  geom_point() +
+  ggplot(aes(x=Day, y=resp_rate_c, color=Measurement, shape=Measurement)) +
+  geom_point(size=2) +
   labs(y="CO2 mineralization rate") +
   facet_wrap(Soil ~ Litter) +
   theme_test() +
@@ -105,8 +111,8 @@ ctotal_plot <- resp_total %>%
   mutate(litter = if_else(Litter=="litter", "litter amendment", "no litter"),
          Soil = if_else(Soil=="Ag", "Agricultural", "Meadow"),
          Measurement = if_else(Measurement=="mz44", "12C", "13C")) %>%
-  ggplot(aes(x=Soil, y=mg, color=Measurement)) +
-  geom_jitter(height=0, width=0.1) +
+  ggplot(aes(x=Soil, y=mg, shape=Measurement, color=Measurement)) +
+  geom_jitter(height=0, width=0.1, size=3) +
   geom_vline(xintercept = 0.1) +
   facet_wrap(~Litter) +
   theme_test() +

@@ -7661,3 +7661,467 @@ Shutdown this notebook server (y/[n])? No answer for 5s: resuming operation...
 [33m[W 21:04:29.639 NotebookApp][m 403 GET /api/sessions?_=1684709607679 (127.0.0.1) 1.680000ms referer=http://localhost:3331/tree/scripts
 [33m[W 21:04:29.644 NotebookApp][m Forbidden
 [33m[W 21:04:29.644 NotebookApp][m 403 GET /api/terminals?_=1684709607680 (127.0.0.1) 1.300000ms referer=http://localhost:3331/tree/scripts
+[32m[I 11:48:45.971 NotebookApp][m 302 GET /tree/scripts (127.0.0.1) 2.700000ms
+[32m[I 11:52:21.254 NotebookApp][m 302 POST /login?next=%2Ftree%2Fscripts (127.0.0.1) 2.140000ms
+[33m[W 12:30:59.161 NotebookApp][m WebSocket ping timeout after 119833 ms.
+[32m[I 12:31:04.164 NotebookApp][m Starting buffering for 052d7b95-7d23-4123-9b42-9e8f7240b952:a03d3b01c64e4cd4be4b10cbcca0c65b
+[32m[I 12:38:22.372 NotebookApp][m Restoring connection for 052d7b95-7d23-4123-9b42-9e8f7240b952:a03d3b01c64e4cd4be4b10cbcca0c65b
+[33m[W 14:00:22.373 NotebookApp][m WebSocket ping timeout after 119878 ms.
+[32m[I 14:00:27.378 NotebookApp][m Starting buffering for 052d7b95-7d23-4123-9b42-9e8f7240b952:a03d3b01c64e4cd4be4b10cbcca0c65b
+[31m[E 15:41:04.648 NotebookApp][m Uncaught exception GET /notebooks/scripts/NIFA2.dada2.pipeline.ipynb (127.0.0.1)
+    HTTPServerRequest(protocol='http', host='localhost:3331', method='GET', uri='/notebooks/scripts/NIFA2.dada2.pipeline.ipynb', version='HTTP/1.1', remote_ip='127.0.0.1')
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/gen.py", line 775, in run
+        try:
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/notebook/handlers.py", line 94, in get
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: notebook.html
+[31m[E 15:41:04.653 NotebookApp][m Uncaught exception in write_error
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/gen.py", line 775, in run
+        try:
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/notebook/handlers.py", line 94, in get
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: notebook.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 580, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: 500.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1217, in send_error
+        self.set_status(status_code, reason=reason)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 582, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: error.html
+[31m[E 15:41:04.655 NotebookApp][m {
+      "Host": "localhost:3331",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "Referer": "http://localhost:3331/tree/scripts",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/114.0"
+    }
+[31m[E 15:41:04.655 NotebookApp][m 500 GET /notebooks/scripts/NIFA2.dada2.pipeline.ipynb (127.0.0.1) 8.800000ms referer=http://localhost:3331/tree/scripts
+[31m[E 15:41:04.819 NotebookApp][m Uncaught exception in write_error
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 2576, in get
+        To change the way static urls are generated (e.g. to match the behavior
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 837, in validate_absolute_path
+    tornado.web.HTTPError: HTTP 404: Not Found
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 580, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: 404.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1217, in send_error
+        self.set_status(status_code, reason=reason)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 582, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: error.html
+[33m[W 15:41:04.820 NotebookApp][m 404 GET /favicon.ico (127.0.0.1) 2.380000ms referer=http://localhost:3331/notebooks/scripts/NIFA2.dada2.pipeline.ipynb
+[31m[E 15:41:24.610 NotebookApp][m Uncaught exception GET /notebooks/scripts/NIFA2.dada2.pipeline.ipynb (127.0.0.1)
+    HTTPServerRequest(protocol='http', host='localhost:3331', method='GET', uri='/notebooks/scripts/NIFA2.dada2.pipeline.ipynb', version='HTTP/1.1', remote_ip='127.0.0.1')
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/gen.py", line 775, in run
+        try:
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/notebook/handlers.py", line 94, in get
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: notebook.html
+[31m[E 15:41:24.611 NotebookApp][m Uncaught exception in write_error
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/gen.py", line 775, in run
+        try:
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/notebook/handlers.py", line 94, in get
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: notebook.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 580, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: 500.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1217, in send_error
+        self.set_status(status_code, reason=reason)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 582, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: error.html
+[31m[E 15:41:24.612 NotebookApp][m {
+      "Host": "localhost:3331",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "Referer": "http://localhost:3331/tree/scripts",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/114.0"
+    }
+[31m[E 15:41:24.613 NotebookApp][m 500 GET /notebooks/scripts/NIFA2.dada2.pipeline.ipynb (127.0.0.1) 4.600000ms referer=http://localhost:3331/tree/scripts
+[31m[E 15:41:28.934 NotebookApp][m Uncaught exception GET /notebooks/scripts/NIFA2.dada2.pipeline.ipynb (127.0.0.1)
+    HTTPServerRequest(protocol='http', host='localhost:3331', method='GET', uri='/notebooks/scripts/NIFA2.dada2.pipeline.ipynb', version='HTTP/1.1', remote_ip='127.0.0.1')
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/gen.py", line 775, in run
+        try:
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/notebook/handlers.py", line 94, in get
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: notebook.html
+[31m[E 15:41:28.935 NotebookApp][m Uncaught exception in write_error
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/gen.py", line 775, in run
+        try:
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/notebook/handlers.py", line 94, in get
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: notebook.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 580, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: 500.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1217, in send_error
+        self.set_status(status_code, reason=reason)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 582, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: error.html
+[31m[E 15:41:28.937 NotebookApp][m {
+      "Host": "localhost:3331",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "Referer": "http://localhost:3331/tree/scripts",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/114.0"
+    }
+[31m[E 15:41:28.937 NotebookApp][m 500 GET /notebooks/scripts/NIFA2.dada2.pipeline.ipynb (127.0.0.1) 4.510000ms referer=http://localhost:3331/tree/scripts
+[31m[E 17:32:15.786 NotebookApp][m Uncaught exception in write_error
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 2576, in get
+        To change the way static urls are generated (e.g. to match the behavior
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 843, in validate_absolute_path
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 2778, in validate_absolute_path
+        are generated.
+    tornado.web.HTTPError: HTTP 404: Not Found
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 580, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: 404.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1217, in send_error
+        self.set_status(status_code, reason=reason)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 582, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: error.html
+[33m[W 17:32:15.789 NotebookApp][m 404 GET /custom/custom-preload.js?v=20230411131842 (127.0.0.1) 112.480000ms referer=http://localhost:3331/tree/scripts
+[31m[E 20:15:52.783 NotebookApp][m Uncaught exception in write_error
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 2576, in get
+        To change the way static urls are generated (e.g. to match the behavior
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 843, in validate_absolute_path
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 2778, in validate_absolute_path
+        are generated.
+    tornado.web.HTTPError: HTTP 404: Not Found
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 580, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: 404.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1217, in send_error
+        self.set_status(status_code, reason=reason)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 582, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: error.html
+[33m[W 20:15:52.784 NotebookApp][m 404 GET /custom/custom-preload.js?v=20230411131842 (127.0.0.1) 3.540000ms referer=http://localhost:3331/tree/scripts
+[31m[E 15:37:17.831 NotebookApp][m Uncaught exception in write_error
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 2576, in get
+        To change the way static urls are generated (e.g. to match the behavior
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 843, in validate_absolute_path
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 2778, in validate_absolute_path
+        are generated.
+    tornado.web.HTTPError: HTTP 404: Not Found
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 580, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: 404.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1217, in send_error
+        self.set_status(status_code, reason=reason)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 582, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: error.html
+[33m[W 15:37:17.833 NotebookApp][m 404 GET /custom/custom-preload.js?v=20230411131842 (127.0.0.1) 5.980000ms referer=http://localhost:3331/tree/scripts
+[31m[E 14:29:41.381 NotebookApp][m Uncaught exception in write_error
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1704, in _execute
+        # instead.
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 2576, in get
+        To change the way static urls are generated (e.g. to match the behavior
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 843, in validate_absolute_path
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 2778, in validate_absolute_path
+        are generated.
+    tornado.web.HTTPError: HTTP 404: Not Found
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 580, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: 404.html
+    
+    During handling of the above exception, another exception occurred:
+    
+    Traceback (most recent call last):
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/tornado/web.py", line 1217, in send_error
+        self.set_status(status_code, reason=reason)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 582, in write_error
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 510, in render_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/notebook/base/handlers.py", line 506, in get_template
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 1010, in get_template
+        return self._load_template(name, globals)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/environment.py", line 969, in _load_template
+        template = self.loader.load(self, name, self.make_globals(globals))
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 126, in load
+        source, filename, uptodate = self.get_source(environment, name)
+      File "/home/cassi/anaconda3/lib/python3.10/site-packages/jinja2/loaders.py", line 218, in get_source
+        raise TemplateNotFound(template)
+    jinja2.exceptions.TemplateNotFound: error.html
+[33m[W 14:29:41.382 NotebookApp][m 404 GET /custom/custom-preload.js?v=20230411131842 (127.0.0.1) 4.810000ms referer=http://localhost:3331/tree/scripts

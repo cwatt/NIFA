@@ -12,7 +12,13 @@ knitr::opts_chunk$set(warning = FALSE)
 ```
 
 ```{r}
-library(tidyverse)
+#library(tidyverse)
+library("tidyr")
+library("dplyr")
+library("tibble")
+library("readr")
+library("forcats")
+library("ggplot2")
 
 sessionInfo()
 
@@ -261,9 +267,10 @@ wgresp_plot <- weightedg_resprate_tot %>%
   ungroup() %>%
   mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
   ggplot(aes(y=mgCO2_day, x=weighted_g)) +
-  geom_point(aes(shape=Soil), size=2) +
+  geom_point(aes(shape=Soil), size=3) +
   scale_shape_manual(values=c(1,20)) +
-  geom_smooth(method="lm", linetype=2, color="black") +
+  geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black", alpha=0.3) +
+  scale_linetype_manual(values=c("dashed", "solid")) +
   theme_test() +
   theme(axis.title = element_text(size=14),
     axis.text = element_text(size=12),
@@ -280,6 +287,25 @@ ggsave(wgresp_plot, file="../figures/fig_wgresp.svg", units="mm", height=90, wid
 
 ## Statistics
 
+Total:
+
+```{r}
+wgrr_avg_tot <- weightedg_resprate_tot %>%
+  group_by(Soil, Day) %>%  # average across replicates
+  summarize(weighted_g = mean(weighted_g, na.rm=TRUE),
+            resp_rate_co2 = mean(mgCO2_day, na.rm=TRUE)) %>% 
+  ungroup()
+
+# Overall
+cor.test(wgrr_avg_tot$weighted_g, wgrr_avg_tot$resp_rate_co2)
+
+# Sep soil
+cor.test(wgrr_avg_tot[wgrr_avg_tot$Soil=="Ag",]$weighted_g, wgrr_avg_tot[wgrr_avg_tot$Soil=="Ag",]$resp_rate_co2)
+cor.test(wgrr_avg_tot[wgrr_avg_tot$Soil=="Meadow",]$weighted_g, wgrr_avg_tot[wgrr_avg_tot$Soil=="Meadow",]$resp_rate_co2)
+```
+
+Seperate measurements:
+
 ```{r}
 # Average replicates
 wgrr_avg <- weightedg_resprate %>%
@@ -287,9 +313,6 @@ wgrr_avg <- weightedg_resprate %>%
   summarize(weighted_g = mean(weighted_g, na.rm=TRUE),
             resp_rate_co2 = mean(resp_rate_co2, na.rm=TRUE)) %>% 
   ungroup()
-
-# Overall
-cor.test(wgrr_avg$weighted_g, wgrr_avg$resp_rate_co2)
 
 # Labelled
 # Ag
@@ -547,9 +570,10 @@ wggreff_plot <- greff_df %>%
   ungroup() %>% 
   mutate(Soil=if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
   ggplot(aes(x=weighted_g, y=log(greff))) +
-  geom_point(aes(shape=Soil), size=2) +
+  geom_point(aes(shape=Soil), size=3) +
   scale_shape_manual(values=c(1,16)) +
-  geom_smooth(method="lm", color="black", linetype=2) +
+  geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black", alpha=0.3) +
+  scale_linetype_manual(values=c("dashed", "solid")) +
   theme_test() +
   theme(axis.title = element_text(size=14),
     axis.text = element_text(size=12),
@@ -572,7 +596,12 @@ greff_avg <- greff_df %>%
             weighted_g = mean(weighted_g)) %>%
   ungroup()
 
+# Overall
 cor.test(greff_avg$weighted_g, log(greff_avg$greff))
+
+# Sep soils
+cor.test(greff_avg[greff_avg$Soil=="Ag",]$weighted_g, log(greff_avg[greff_avg$Soil=="Ag",]$greff))
+cor.test(greff_avg[greff_avg$Soil=="Meadow",]$weighted_g, log(greff_avg[greff_avg$Soil=="Meadow",]$greff))
 ```
 
 # Greff vs respiration rate

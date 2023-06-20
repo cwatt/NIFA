@@ -876,11 +876,13 @@ growth_death_asv %>%
   pivot_wider(names_from=type, values_from=change_abund_corr) %>% 
   filter(!(is.na(death) | is.na(growth))) %>% # only taxa with a growth and death estimate
   ggplot(aes(x=log(growth), y=log(abs(death)))) +
-  geom_point() +
+  geom_point(aes(shape=Soil)) +
   geom_smooth(method="lm", linetype=2, color="black") +
   labs(x="ln deltaNg", y="ln deltaNd") +
+  scale_shape_manual(values=c(1,16)) +
+  geom_abline(slope=1, intercept=0) +
   #scale_shape_manual(values=c(1, 19)) +
-  facet_wrap(~Soil, scales="free") +
+  #facet_wrap(~Soil) +
   theme_test() +
   theme()
 ```
