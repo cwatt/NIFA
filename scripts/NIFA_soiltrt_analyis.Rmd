@@ -15,7 +15,13 @@ knitr::opts_chunk$set(message = FALSE)
 # Clear working directory, load in packages, generate package info
 rm(list=ls())
 
-library("tidyverse")
+#library("tidyverse")
+library("magrittr")
+library("dplyr")
+library("tibble")
+library("readr")
+library("forcats")
+library("ggplot2")
 library("phyloseq")
 library("vegan")
 library("ape")
@@ -978,99 +984,3 @@ length(intersect(ag_asvs$ASV, mead_asvs$ASV))
 length(intersect(ag_asvs$ASV, mead_asvs$ASV))/length(ag_asvs$ASV)
 length(intersect(ag_asvs$ASV, mead_asvs$ASV))/length(mead_asvs$ASV)
 ```
-
-
-# SCRAP
-
-Death:
-
-# Gaussian mixture modeling
-
-```{r}
-library(mclust)
-set.seed(3)
-```
-
-## Growth k
-
-```{r}
-# Agricultural
-
-# Visualize
-ggplot(data=growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="growth",],
-       aes(log(k))) +
-  geom_density() +
-  theme_test()
-
-# Subset data
-k_grag <- growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="growth",]$k
-
-# Fit univariate gaussian mixture models
-agk_mclust <- densityMclust(log(k_grag))
-summary(agk_mclust)
-plot(agk_mclust$BIC)
-agk_mclust$parameters
-```
-
-```{r}
-# Meadow
-
-# Visualize
-ggplot(data=growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="growth",],
-       aes(log(k))) +
-  geom_density() +
-  theme_test()
-
-# Subset data
-k_grmd <- growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="growth",]$k
-
-# Fit univariate gaussian mixture models
-agk_mclust <- densityMclust(log(k_grmd))
-summary(agk_mclust)
-plot(agk_mclust$BIC)
-agk_mclust$parameters
-```
-
-## Death k
-
-Fit univariate gaussian mixture models:
-
-# PIN: this seems weird?? look into later
-```{r}
-# Agricultural
-
-# Visualize
-ggplot(data=growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="death",],
-       aes(log(k))) +
-  geom_density() +
-  theme_test()
-
-# Subset data
-k_deag <- growth_death_asv[growth_death_asv$Soil=="Ag" & growth_death_asv$type=="death",]$k
-
-# Fit univariate gaussian mixture models
-agd_mclust <- densityMclust(log(k_deag))
-summary(agd_mclust)
-plot(agd_mclust$BIC)
-agd_mclust$parameters
-```
-
-```{r}
-# Meadow
-
-# Visualize
-ggplot(data=growth_death_asv[growth_death_asv$Soil=="Meadow" & growth_death_asv$type=="death",],
-       aes(log(k))) +
-  geom_density() +
-  theme_test()
-
-# Subset data
-k_demd <- growth_death_asv[growth_death_asv$Soil=="Meadow" & growth_death_asv$type=="death",]$k
-
-# Fit univariate gaussian mixture models
-mdd_mclust <- densityMclust(log(abs(k_demd)))
-summary(mdd_mclust)
-plot(mdd_mclust$BIC)
-mdd_mclust$parameters
-```
-

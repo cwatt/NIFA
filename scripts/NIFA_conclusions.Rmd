@@ -1,0 +1,335 @@
+---
+title: "Untitled"
+author: "Cassandra Wattenburger"
+date: "6/27/2023"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+#library("tidyverse")
+library("magrittr")
+library("dplyr")
+library("tibble")
+library("readr")
+library("forcats")
+library("ggplot2")
+
+sessionInfo()
+```
+
+# Import data
+
+Dunlop:
+
+```{r}
+growth_pap_dunlop <- readRDS("/home/cassi/dunlop_popdynamics/rdata.files/gr_gr.paprica.clean.rds") %>% 
+  mutate(Replicate = as.character(Replicate))
+
+growth_asv_dunlop <- growth_pap_dunlop %>% # average replicates
+  group_by(Soil, Amendment, ASV) %>% 
+  summarize_if(is.numeric, mean) %>% 
+  ungroup()
+```
+
+SFA:
+
+```{r}
+growth_pap_sfa <- readRDS("/home/cassi/SFA/data_intermediate/SFA2_growth_estimates_pap2.rds")
+
+growth_asv_sfa <- growth_pap_sfa %>% # average inoculants
+  group_by(ASV) %>% 
+  summarize_if(is.numeric, mean) %>% 
+  ungroup()
+```
+
+NIFA:
+
+```{r}
+growth_nifa <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+pap_nifa <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+
+growth_pap_nifa <- inner_join(growth_nifa, pap_nifa) %>% 
+  mutate(Replicate = as.character(Replicate))
+
+growth_asv_nifa <- growth_pap_nifa %>% # average replicates
+  group_by(Soil, ASV) %>% 
+  summarize_if(is.numeric, mean) %>% 
+  ungroup()
+```
+
+# rrn and genome size vs. growth metrics
+
+## rrn x growth rates
+
+Dunlop:
+
+```{r}
+# Visualize
+rrngr_dunlop <- growth_asv_dunlop %>% 
+  ggplot(aes(x=log(n16S), y=log(k))) +
+  geom_point(shape=1, size=2) +
+  facet_wrap(Soil~Amendment) +
+  geom_smooth(method="lm", linetype=2, color="black") +
+  theme_test() +
+  theme(axis.text=element_text(size=10),
+        strip.text.x = element_blank()) # note from right to left, top to bottom panels are C3 Y, C3N, S17Y, S17N
+rrngr_dunlop
+```
+
+```{r, eval=FALSE}
+ggsave(rrngr_dunlop, file="../figures/conc_dunlop_rrnxgr.svg", units="mm", height=90, width=90, device="svg")
+```
+
+SFA:
+
+```{r}
+# Visualize
+rrngr_sfa <- growth_asv_sfa %>% 
+  ggplot(aes(x=log(n16S), y=log(k))) +
+  geom_point(size=2, shape=1) +
+  geom_smooth(method="lm", linetype=2, color="black") +
+  theme_test() +
+  theme(axis.text=element_text(size=10))
+rrngr_sfa
+
+# Correlation
+cor.test(log(growth_asv_sfa$n16S), log(growth_asv_sfa$k), method="spearman")
+```
+
+```{r, eval=FALSE}
+ggsave(rrngr_sfa, file="../figures/conc_sfa_rrnxgr.svg", units="mm", height=90, width=90, device="svg")
+```
+
+NIFA:
+
+```{r}
+# Visualize
+rrngr_nifa <- growth_asv_nifa %>% 
+  ggplot(aes(x=log(n16S), y=log(k))) +
+  geom_point(size=2, shape=1) +
+  facet_wrap(~Soil) +
+    geom_smooth(method="lm", aes(group=Soil), linetype=2, color="black") +
+  theme_test() +
+  theme(axis.text=element_text(size=10),
+        strip.text.x = element_blank()) # note right panel is ag left is meadow
+rrngr_nifa
+
+# Correlations
+cor.test(log(growth_asv_nifa[growth_asv_nifa$Soil=="Ag",]$n16S), log(growth_asv_nifa[growth_asv_nifa$Soil=="Ag",]$k), method="spearman")
+cor.test(log(growth_asv_nifa[growth_asv_nifa$Soil=="Meadow",]$n16S), log(growth_asv_nifa[growth_asv_nifa$Soil=="Meadow",]$k), method="spearman")
+
+p.adjust(p=c(0.01873, 0.09649), method="holm", n=2)
+```
+
+```{r, eval=FALSE}
+ggsave(rrngr_nifa, file="../figures/conc_nifa_rrnxgr.svg", units="mm", height=90, width=180, device="svg")
+```
+
+## Genome size x growth rates
+
+Dunlop:
+
+```{r}
+# Visualize
+genomegr_dunlop <- growth_asv_dunlop %>% 
+  ggplot(aes(x=log(genome_size), y=log(k))) +
+  geom_point(shape=1, size=2) +
+  facet_wrap(Soil~Amendment) +
+  geom_smooth(method="lm", linetype=2, color="black") +
+  theme_test() +
+  theme(axis.text=element_text(size=10),
+        axis.text.x = element_text(size=8),
+        strip.text.x = element_blank()) # note from right to left, top to bottom panels are C3 Y, C3N, S17Y, S17N
+genomegr_dunlop
+
+# Statistics
+cor.test(log(growth_asv_dunlop[growth_asv_dunlop$Soil=="C3" & growth_asv_dunlop$Amendment=="Y",]$genome_size), log(growth_asv_dunlop[growth_asv_dunlop$Soil=="C3" & growth_asv_dunlop$Amendment=="Y",]$k), method="spearman")
+cor.test(log(growth_asv_dunlop[growth_asv_dunlop$Soil=="C3" & growth_asv_dunlop$Amendment=="N",]$genome_size), log(growth_asv_dunlop[growth_asv_dunlop$Soil=="C3" & growth_asv_dunlop$Amendment=="N",]$k), method="spearman")
+cor.test(log(growth_asv_dunlop[growth_asv_dunlop$Soil=="S17" & growth_asv_dunlop$Amendment=="Y",]$genome_size), log(growth_asv_dunlop[growth_asv_dunlop$Soil=="S17" & growth_asv_dunlop$Amendment=="Y",]$k), method="spearman")
+cor.test(log(growth_asv_dunlop[growth_asv_dunlop$Soil=="S17" & growth_asv_dunlop$Amendment=="N",]$genome_size), log(growth_asv_dunlop[growth_asv_dunlop$Soil=="S17" & growth_asv_dunlop$Amendment=="N",]$k), method="spearman")
+
+p.adjust(p=c(0.03584, 0.8906, 0.8429, 0.6332), method="holm", n=4)
+```
+
+```{r, eval=FALSE}
+ggsave(genomegr_dunlop, file="../figures/conc_dunlop_genomexgr.svg", units="mm", height=90, width=90, device="svg")
+```
+
+SFA:
+
+```{r}
+# Visualize
+genomegr_sfa <- growth_asv_sfa %>% 
+  ggplot(aes(x=log(genome_size), y=log(k))) +
+  geom_point(size=2, shape=1) +
+  geom_smooth(method="lm", linetype=2, color="black") +
+  theme_test() +
+  theme(axis.text=element_text(size=10))
+genomegr_sfa
+
+# Correlation
+cor.test(log(growth_asv_sfa$genome_size), log(growth_asv_sfa$k), method="spearman")
+```
+
+```{r, eval=FALSE}
+ggsave(genomegr_sfa, file="../figures/conc_sfa_genomexgr.svg", units="mm", height=90, width=90, device="svg")
+```
+
+NIFA:
+
+```{r}
+# Visualize
+genomegr_nifa <- growth_asv_nifa %>% 
+  ggplot(aes(x=log(genome_size), y=log(k))) +
+  geom_point(size=2, shape=1) +
+  facet_wrap(~Soil) +
+    geom_smooth(method="lm", aes(group=Soil), linetype=2, color="black") +
+  theme_test() +
+  theme(axis.text=element_text(size=10),
+        strip.text.x = element_blank()) # note right panel is ag left is meadow
+genomegr_nifa
+
+# Correlations
+cor.test(log(growth_asv_nifa[growth_asv_nifa$Soil=="Ag",]$genome_size), log(growth_asv_nifa[growth_asv_nifa$Soil=="Ag",]$k), method="spearman")
+cor.test(log(growth_asv_nifa[growth_asv_nifa$Soil=="Meadow",]$genome_size), log(growth_asv_nifa[growth_asv_nifa$Soil=="Meadow",]$k), method="spearman")
+```
+
+```{r, eval=FALSE}
+ggsave(genomegr_nifa, file="../figures/conc_nifa_genomexgr.svg", units="mm", height=90, width=90, device="svg")
+```
+
+# deltaNg vs deltaNd
+
+Dunlop:
+
+```{r}
+death_dunlop <- readRDS("/home/cassi/dunlop_popdynamics/rdata.files/gr_death_estimates.rds") %>% 
+  mutate(Replicate = as.character(Replicate))
+
+# Average across reps
+death_asv_dunlop <- death_pap_dunlop %>% 
+  group_by(Soil, Amendment, ASV) %>% # average across reps
+  summarize_if(is.numeric, mean) %>% 
+  ungroup() %>% 
+  select(Soil, Amendment, ASV, start_death = start_abund, end_death = end_abund)
+
+# Combine growth and death
+deltaN_dunlop <- inner_join(growth_asv_dunlop, death_asv_dunlop) %>% 
+  mutate(deltaNg = (end_abund - start_abund)/n16S,
+         deltaNd = (end_death - start_death)/n16S) %>% 
+  select(Soil, Amendment, ASV, deltaNg, deltaNd)
+```
+
+```{r}
+# Visualize
+delta_dunlop <- deltaN_dunlop %>% 
+  ggplot(aes(x=log(deltaNg), y=log(abs(deltaNd)))) +
+  geom_point(size=2, shape=1) +
+  facet_wrap(Soil~Amendment) +
+  geom_smooth(method="lm", color="black", linetype=2) +
+  theme_test() +
+  theme(axis.text=element_text(size=10),
+      strip.text.x = element_blank()) # note from right to left, top to bottom panels are C3 Y, C3N, S17Y, S17N
+
+# Stats
+delta_dunlop
+```
+
+```{r, eval=FALSE}
+ggsave(delta_dunlop, file="../figures/conc_dunlop_deltas.svg", units="mm", height=90, width=90, device="svg")
+```
+
+SFA:
+
+```{r}
+death_sfa <- readRDS("/home/cassi/SFA/data_intermediate/SFA2_death_estimates_pap2.rds")
+
+# Calculate
+deltaNd_sfa <- death_sfa %>% 
+  group_by(ASV) %>% 
+  summarize_if(is.numeric, mean) %>% 
+  ungroup() %>% 
+  mutate(deltaNd = (end_abund - start_abund)/n16S) %>% 
+  select(ASV, deltaNd)
+
+deltaNg_sfa <- growth_asv_sfa %>% 
+  mutate(deltaNg = change_abund/n16S) %>% 
+  select(ASV, deltaNg)
+
+# Combine growth and death
+deltaN_sfa <- inner_join(deltaNd_sfa, deltaNg_sfa)
+```
+
+```{r}
+# Visualize
+delta_sfa<- deltaN_sfa %>% 
+  ggplot(aes(x=log(deltaNg), y=log(abs(deltaNd)))) +
+  geom_point(size=2, shape=1) +
+  geom_smooth(method="lm", color="black", linetype=2) +
+  theme_test() +
+  theme(axis.text=element_text(size=10),
+      strip.text.x = element_blank())
+
+delta_sfa
+
+# Stats
+cor.test(log(deltaN_sfa$deltaNg), log(abs(deltaN_sfa$deltaNd)), method="pearson")
+```
+
+```{r, eval=FALSE}
+ggsave(delta_sfa, file="../figures/conc_sfa_deltas.svg", units="mm", height=90, width=90, device="svg")
+```
+
+NIFA:
+
+```{r}
+death_nifa <- readRDS("../data_intermediate/NIFA_dests_final_ind.rds")
+
+# Average across reps
+death_asv_nifa <- death_nifa %>% 
+  mutate(Replicate = as.character(Replicate)) %>% 
+  group_by(Soil, ASV) %>% 
+  summarize_if(is.numeric, mean) %>% 
+  ungroup()
+
+# Combine growth and death
+deltaN_nifa <- death_asv_nifa %>% 
+  select(Soil, ASV, change_death = change_abund) %>% 
+  inner_join(growth_asv_nifa) %>% 
+  mutate(deltaNd = change_death/n16S,
+         deltaNg = (end_abund - start_abund)/n16S) %>% 
+  select(Soil, ASV, deltaNg, deltaNd)
+```
+
+```{r}
+# Visualize
+delta_nifa<- deltaN_nifa %>% 
+  ggplot(aes(x=log(deltaNg), y=log(abs(deltaNd)))) +
+  geom_point(size=2, shape=1) +
+  geom_smooth(method="lm", color="black", linetype=2) +
+  facet_wrap(~Soil) +
+  theme_test() +
+  theme(axis.text=element_text(size=10),
+      strip.text.x = element_blank())
+delta_nifa
+
+# Stats
+cor.test(log(deltaN_nifa[deltaN_nifa$Soil=="Ag",]$deltaNg), log(abs(deltaN_nifa[deltaN_nifa$Soil=="Ag",]$deltaNd)), method="pearson")
+cor.test(log(deltaN_nifa[deltaN_nifa$Soil=="Meadow",]$deltaNg), log(abs(deltaN_nifa[deltaN_nifa$Soil=="Meadow",]$deltaNd)), method="pearson")
+
+p.adjust(p=c(1.437e-15, 2.2e-16), method="holm", n=2) # this is stupid
+```
+
+```{r, eval=FALSE}
+ggsave(delta_nifa, file="../figures/conc_nifa_deltas.svg", units="mm", height=90, width=180, device="svg")
+```
+
