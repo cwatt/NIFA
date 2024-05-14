@@ -337,7 +337,7 @@ totwss_df <- tibble(ag, meadow) %>%
   pivot_longer(c("ag", "meadow"), names_to = "soil")
 
 # Plot
-totwss_df %>% 
+totwss_suppfig <- totwss_df %>% 
   ggplot(aes(x=cluster_num, y=value, shape=soil)) +
   geom_point(size=2) +
   theme_test() +
@@ -347,6 +347,9 @@ totwss_df %>%
       axis.text = element_text(size=12),
       legend.title = element_text(size=14),
       legend.text = element_text(size=12))
+totwss_suppfig
+
+ggsave(totwss_suppfig, file="../figures/suppfig_totwss.svg", units="mm", height=90, width=150, device="svg")
 ```
 
 Elbow clearly at 3 clusters.
