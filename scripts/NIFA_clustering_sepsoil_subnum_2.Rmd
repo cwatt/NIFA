@@ -264,18 +264,18 @@ meadow6_cumvar <- summary(features_meadow6_pcs)$importance[3,] %>%
   rename(cum_prop='.') %>% 
   add_column(soil = "meadow")
 
-suppfig <- ag6_cumvar %>% 
+suppfig_pca <- ag6_cumvar %>% 
   bind_rows(meadow6_cumvar) %>% 
   ggplot(aes(x=PC, y=cum_prop, shape=soil)) +
   geom_point(size=2) +
-  labs(x=)
+  labs(x="principle components", y="cumulative variance explained") +
   theme_test() +
   theme(axis.title = element_text(size=14),
       axis.text = element_text(size=12),
       legend.title = element_text(size=14),
       axis.title.x = element_blank(),
       legend.text = element_text(size=12))
-suppfig
+suppfig_pca
 
 # Scree plot
 eigenvals_ag <- features_ag6_pcs$sdev^2 %>% 
@@ -306,6 +306,11 @@ eigenvals_meadow %>%
 ```
 
 Shoulder is at 3-4 PCs.
+
+```{r}
+ggsave(suppfig_pca, file="../figures/suppfig_pca.svg", units="mm", height=90, width=150, device="svg")
+```
+
 
 # Within-sum squared distances
 
