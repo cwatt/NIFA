@@ -806,6 +806,8 @@ saveRDS(growth_tidy, file="../data_intermediate/NIFA_grests_final_ind.rds")
 # Summary of growth estimates
 
 ```{r}
+growth_tidy <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+
 # Number of estimates per replicate
 growth_tidy %>% 
   group_by(Soil, Replicate) %>% 

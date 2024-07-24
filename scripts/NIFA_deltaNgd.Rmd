@@ -1,0 +1,76 @@
+---
+title: "Growth vs death change in abundance figure"
+author: "Cassandra Wattenburger"
+date: "07/24/2024"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+
+sessionInfo()
+```
+
+# Import and prep data
+
+```{r}
+growth <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds")
+pap <- readRDS("../data_intermediate/NIFA_paprica_ests.rds")
+
+growth_pap <- inner_join(growth, pap) %>% 
+  mutate(Replicate = as.character(Replicate))
+
+growth_asv <- growth_pap %>% # average replicates
+  group_by(Soil, ASV) %>% 
+  summarize_if(is.numeric, mean) %>% 
+  ungroup()
+
+death <- readRDS("../data_intermediate/NIFA_dests_final_ind.rds")
+head(death)
+
+# Average across reps
+death_asv <- death %>% 
+  mutate(Replicate = as.character(Replicate)) %>% 
+  group_by(Soil, ASV) %>% 
+  summarize_if(is.numeric, mean) %>% 
+  ungroup()
+
+# Combine growth and death
+deltaN <- death_asv %>% 
+  select(Soil, ASV, change_death = change_abund) %>% 
+  inner_join(growth_asv) %>% 
+  mutate(deltaNd = change_death/n16S,
+         deltaNg = change_abund/n16S) %>% 
+  select(Soil, ASV, deltaNg, deltaNd)
+```
+
+# Visualize
+
+```{r}
+deltaN_graph <- deltaN %>% 
+  ggplot(aes(x=log(deltaNg), y=log(abs(deltaNd)))) +
+  geom_point(size=2, shape=1) +
+  geom_smooth(method="lm", color="black", linetype=2) +
+  facet_wrap(~Soil, nrow=2) +
+  theme_test() +
+  theme(axis.text=element_text(size=10),
+      strip.text.x = element_blank())
+deltaN_graph
+
+ggsave(deltaN_graph, file="../figures/fig_deltaNgd.svg", units="mm", width=88, device="svg")
+
+# Stats
+cor.test(log(deltaN[deltaN$Soil=="Ag",]$deltaNg), log(abs(deltaN[deltaN$Soil=="Ag",]$deltaNd)), method="pearson")
+cor.test(log(deltaN[deltaN$Soil=="Meadow",]$deltaNg), log(abs(deltaN[deltaN$Soil=="Meadow",]$deltaNd)), method="pearson")
+```
+
+

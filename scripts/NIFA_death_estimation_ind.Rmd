@@ -661,6 +661,8 @@ saveRDS(death_tidy, file="../data_intermediate/NIFA_dests_final_ind.rds")
 # Summary of death estimates
 
 ```{r}
+death_tidy <- readRDS("../data_intermediate/NIFA_dests_final_ind.rds")
+
 # Number of estimates per replicate
 death_tidy %>% 
   group_by(Soil, Replicate) %>% 
@@ -762,3 +764,36 @@ for (l in as.character(death_rand$label)) {
   print(graph)
   }
 ```
+
+```{r}
+count <- 0
+
+for (l in unique(as.character(death_tidy$label))) {
+  count <- count + 1
+  # Subset time series
+  death_label <- filter(death_tidy, label==l)
+  norm_label <- filter(norm_prep, label==l) %>% 
+  arrange(Day)
+  # Title information
+  title <- paste0(count, ". ", l)
+  
+  # Graph with estimate
+  graph <- ggplot(norm_label, aes(x=Day, y=ln_norm_abund)) +
+    geom_point(shape=1, size=3, color="#6F7378") +
+    geom_line(color="#6F7378") +
+    geom_smooth(method="lm", data=norm_label[death_label$start_pt:death_label$end_pt,], linetype=2, color="black") +
+    #labs(title=title, x="day", y="ln norm abundance") +
+    labs(title=title, x="day", y="ln norm abund") +
+    theme_test() +
+    theme(title = element_text(size=18),
+        axis.title = element_text(size=16),
+        axis.text = element_text(size=14))
+  
+  # Print
+  print(graph)
+  
+  # Save to pdf
+  #ggsave(file=paste0("../figures/all_timeseries/", count, "_", label, "_west.png"), graph)
+}
+```
+

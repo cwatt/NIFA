@@ -368,7 +368,9 @@ growth_death %>%
   ungroup() %>%
   group_by(Soil) %>% 
   summarize(ests_mean = mean(ests),
-            ests_sd = sd(ests))
+            ests_sd = sd(ests),
+            ests_min = min(ests),
+            ests_max = max(ests))
 
 # Average generation time
 growth_death %>% 
@@ -378,7 +380,9 @@ growth_death %>%
   ungroup() %>% 
   group_by(Soil) %>% 
   summarise(g_mean = mean(g),
-            g_sd = sd(g))
+            g_sd = sd(g),
+            g_min = min(g),
+            g_max = max(g))
 
 # Lag time
 growth_death %>% 
@@ -388,7 +392,9 @@ growth_death %>%
   ungroup() %>% 
   group_by(Soil) %>% 
   summarise(lag_mean = mean(lag),
-            lag_sd = sd(lag))
+            lag_sd = sd(lag),
+            lag_min = min(lag),
+            lag_max = max(lag))
 
 # change in abundance
 growth_death %>% 
@@ -398,7 +404,9 @@ growth_death %>%
   ungroup() %>% 
   group_by(Soil) %>% 
   summarise(chabund_mean = mean(chabund),
-            chabund_sd = sd(chabund))
+            chabund_sd = sd(chabund),
+            chabund_min = min(chabund),
+            chabund_max = max(chabund))
 ```
 
 Death summary:
@@ -414,7 +422,9 @@ growth_death %>%
   ungroup() %>%
   group_by(Soil) %>% 
   summarize(ests_mean = mean(ests),
-            ests_sd = sd(ests))
+            ests_sd = sd(ests),
+            ests_min = min(ests),
+            ests_max = max(ests))
 
 # Average generation time
 growth_death %>% 
@@ -424,7 +434,9 @@ growth_death %>%
   ungroup() %>% 
   group_by(Soil) %>% 
   summarise(g_mean = mean(g),
-            g_sd = sd(g))
+            g_sd = sd(g),
+            g_min = min(g),
+            g_max = max(g))
 
 # Lag time
 growth_death %>% 
@@ -434,7 +446,9 @@ growth_death %>%
   ungroup() %>% 
   group_by(Soil) %>% 
   summarise(lag_mean = mean(lag),
-            lag_sd = sd(lag))
+            lag_sd = sd(lag),
+            lag_min = min(lag),
+            lag_max = max(lag))
 
 # change in abundance
 growth_death %>% 
@@ -444,7 +458,9 @@ growth_death %>%
   ungroup() %>% 
   group_by(Soil) %>% 
   summarise(chabund_mean = mean(chabund),
-            chabund_sd = sd(chabund))
+            chabund_sd = sd(chabund),
+            chabund_min = min(chabund),
+            chabund_max = max(chabund))
 ```
 
 Visualize:

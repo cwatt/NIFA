@@ -1,0 +1,112 @@
+---
+title: "NIFA - growth/death estimate examples figure"
+author: "Cassandra Wattenburger"
+date: "07/24/24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(results = "show")
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# Clear working directory, load in packages, generate package info
+rm(list=ls())
+
+library("tidyverse")
+library("trelliscopejs")
+
+sessionInfo()
+```
+
+# Import data and estimates
+
+```{r}
+growth_tidy <- readRDS("../data_intermediate/NIFA_grests_final_ind.rds") # growth estimates
+death_tidy <- readRDS("../data_intermediate/NIFA_dests_final_ind.rds") # death estimates
+norm_prep <- readRDS("../data_intermediate/NIFA_norm_prepped.rds") %>% # normalized abundance data
+  mutate(ln_norm_abund = log(norm_abund))
+tax <- read_tsv(file="../data_amplicon/NIFA2/final/NIFA2.taxonomy-final.tsv") # taxonomies
+```
+
+# Filter examples
+
+```{r}
+growth_examples <- c(682, 795, 764, 768)
+death_examples <- c(101, 6, 289, 428)
+growth_filt <- growth_tidy[(growth_examples),]
+death_filt <- death_tidy[(death_examples),]
+```
+
+```{r}
+head(norm_prep)
+```
+
+# Create graphs for figure
+
+```{r}
+# Growth
+for (l in unique(as.character(growth_filt$label))) {
+  # Subset time series
+  growth_label <- filter(growth_filt, label==l)
+  norm_label <- filter(norm_prep, label==l) %>% 
+  arrange(Day)
+  asv <- growth_label$ASV
+  tax_label <- filter(tax, ASV==asv)
+  # Title information
+  title <- paste0(tax_label$Phylum, ", ", tax_label$Family)
+  
+  # Graph with estimate
+  graph <- ggplot(norm_label, aes(x=Day, y=ln_norm_abund)) +
+    geom_point(shape=1, size=3, color="#6F7378") +
+    geom_line(color="#6F7378") +
+    geom_smooth(method="lm", data=norm_label[growth_label$start_pt:growth_label$end_pt,], linetype=2, color="black") +
+    #labs(title=title, x="day", y="ln norm abundance") +
+    labs(title=title, x="day", y="ln norm abund") +
+    theme_test() +
+    theme(title = element_text(size=18),
+        axis.title = element_text(size=16),
+        axis.text = element_text(size=14))
+  
+  # Print
+  print(graph)
+  
+  # Save
+  ggsave(file=paste0("../figures/suppfig_examples/growth_", l, ".png"), graph)
+}
+
+# Death
+for (l in unique(as.character(death_filt$label))) {
+  # Subset time series
+  death_label <- filter(death_filt, label==l)
+  norm_label <- filter(norm_prep, label==l) %>% 
+  arrange(Day)
+  asv <- death_label$ASV
+  tax_label <- filter(tax, ASV==asv)
+  # Title information
+  title <- paste0(tax_label$Phylum, ", ", tax_label$Family)
+  
+  # Graph with estimate
+  graph <- ggplot(norm_label, aes(x=Day, y=ln_norm_abund)) +
+    geom_point(shape=1, size=3, color="#6F7378") +
+    geom_line(color="#6F7378") +
+    geom_smooth(method="lm", data=norm_label[death_label$start_pt:death_label$end_pt,], linetype=2, color="black") +
+    #labs(title=title, x="day", y="ln norm abundance") +
+    labs(title=title, x="day", y="ln norm abund") +
+    theme_test() +
+    theme(title = element_text(size=18),
+        axis.title = element_text(size=16),
+        axis.text = element_text(size=14))
+  
+  # Print
+  print(graph)
+  
+  # Save
+  ggsave(file=paste0("../figures/suppfig_examples/death_", l, ".png"), graph)
+}
+```
+
+
+
