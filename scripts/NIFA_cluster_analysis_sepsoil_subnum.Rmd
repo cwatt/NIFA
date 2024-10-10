@@ -236,6 +236,67 @@ ggsave(lag_plot, file="../figures/fig_lagclusters.svg", units="mm", height=90, w
 ggsave(length_plot, file="../figures/fig_lengthclusters.svg", units="mm", height=90, width=150, device="svg")
 ```
 
+```{r, eval=FALSE}
+# Nice names
+growth_asv_plot <- growth_asv %>%
+  mutate(Cluster = case_when(cluster=="1" ~ "Competitor",
+                             cluster=="2" ~ "Scarcity",
+                             cluster=="3" ~ "Ruderal"),
+         Cluster = as_factor(Cluster),
+         Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
+         Soil = if_else(Soil=="Ag", "Agriculture", "Meadow"),
+         start_day = start_day+1) %>% 
+  select(Soil, ASV, g, start_day, length, change_abund_corr, Cluster) %>% 
+  pivot_longer(cols=c("g", "start_day", "length", "change_abund_corr"), names_to="parameter", values_to="value")
+
+# combine
+head(growth_asv_plot)
+```
+
+
+```{r, eval=FALSE}
+# isme specifications
+g_plot_isme_legend <- growth_asv_plot %>% 
+  ggplot(aes(x=Cluster, y=log(value), fill=Soil, color=Cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0) +
+  facet_wrap(~parameter, nrow=4, scales="free") +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+      axis.text = element_text(size=7),
+      legend.title = element_text(size=7),
+      legend.text = element_text(size=7),
+      strip.text = element_blank())
+g_plot_isme_legend
+
+g_plot_isme_nolegend <- growth_asv_plot %>% 
+  ggplot(aes(x=Cluster, y=log(value), fill=Soil, color=Cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0) +
+  facet_wrap(~parameter, nrow=4, scales="free") +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+      axis.text = element_text(size=7),
+      legend.title = element_text(size=7),
+      legend.text = element_text(size=7),
+      legend.position = "none",
+      strip.text = element_blank())
+g_plot_isme_nolegend
+```
+
+Export plots:
+
+```{r, eval=FALSE}
+ggsave(g_plot_isme_legend, file="../figures/fig_growthclusters_isme_legend.svg", units="mm", height=300, width=85, device="svg")
+ggsave(g_plot_isme_nolegend, file="../figures/fig_growthclusters_isme_nolegend.svg", units="mm", height=300, width=85, device="svg")
+```
+
 ### Statistics
 
 Generation time:
@@ -588,7 +649,7 @@ diedprop_plot <- clust_grewdied_prop %>%
     legend.text = element_text(size=12))
 diedprop_plot
 
-# g
+# h
 h_plot <- death_asv_plot %>% 
   ggplot(aes(x=Cluster, y=log(h), fill=Soil, color=Cluster)) +
   geom_boxplot() +
@@ -621,12 +682,116 @@ chabund_death_plot <- death_asv_plot %>%
 chabund_death_plot
 ```
 
+
+```{r, eval=FALSE}
+# isme specifications
+
+# Nice names
+death_asv_plot <- death_asv %>%
+  mutate(Cluster = case_when(cluster=="1" ~ "Competitor",
+                             cluster=="2" ~ "Scarcity",
+                             cluster=="3" ~ "Ruderal"),
+         Cluster = as_factor(Cluster),
+         Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
+         Soil = if_else(Soil=="Ag", "Agriculture", "Meadow"))
+
+# Death after growth prop
+diedprop_plot_isme_legend <- clust_grewdied_prop %>% 
+  mutate(Cluster = case_when(cluster=="1" ~ "Competitor",
+                             cluster=="2" ~ "Scarcity",
+                             cluster=="3" ~ "Ruderal"),
+         Cluster = as_factor(Cluster),
+         Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
+         Soil = if_else(Soil=="Ag", "Agriculture", "Meadow")) %>% 
+  ggplot(aes(x=Cluster, y=prop_died, fill=Soil, color=Cluster)) +
+  geom_jitter(aes(shape=Soil), size=2, width=0.1, height=0) +
+    scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+    axis.text = element_text(size=7),
+    legend.title = element_text(size=7),
+    axis.title.x = element_blank(),
+    legend.text = element_text(size=7))
+diedprop_plot_isme_legend
+
+diedprop_plot_isme_nolegend <- clust_grewdied_prop %>% 
+  mutate(Cluster = case_when(cluster=="1" ~ "Competitor",
+                             cluster=="2" ~ "Scarcity",
+                             cluster=="3" ~ "Ruderal"),
+         Cluster = as_factor(Cluster),
+         Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
+         Soil = if_else(Soil=="Ag", "Agriculture", "Meadow")) %>% 
+  ggplot(aes(x=Cluster, y=prop_died, fill=Soil, color=Cluster)) +
+  geom_jitter(aes(shape=Soil), size=2, width=0.1, height=0) +
+    scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+    axis.text = element_text(size=7),
+    legend.title = element_text(size=7),
+    axis.title.x = element_blank(),
+    legend.position = "none")
+diedprop_plot_isme_nolegend
+
+# h
+h_plot_isme_legend <- death_asv_plot %>% 
+  ggplot(aes(x=Cluster, y=log(h), fill=Soil, color=Cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, size=2) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+      axis.text = element_text(size=7),
+      legend.title = element_text(size=7),
+      axis.title.x = element_blank(),
+      legend.text = element_text(size=7))
+h_plot_isme_legend
+
+h_plot_isme_nolegend <- death_asv_plot %>% 
+  ggplot(aes(x=Cluster, y=log(h), fill=Soil, color=Cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, size=2) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+      axis.text = element_text(size=7),
+      legend.title = element_text(size=7),
+      axis.title.x = element_blank(),
+      legend.position = "none")
+h_plot_isme_nolegend
+
+# change abund
+chabund_death_plot_isme_nolegend <- death_asv_plot %>% 
+  ggplot(aes(x=Cluster, y=log(abs(change_abund_corr)), fill=Soil, color=Cluster)) +
+  geom_boxplot() +
+  geom_jitter(aes(shape=Soil), height=0, size=2) +
+  scale_fill_manual(values=c("white", "gray")) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+      axis.text = element_text(size=7),
+      legend.title = element_text(size=7),
+      axis.title.x = element_blank(),
+      legend.position = "none")
+chabund_death_plot_isme_nolegend
+```
+
 Export plots:
 
 ```{r, eval=FALSE}
-ggsave(diedprop_plot, file="../figures/fig_diedprop.svg", units="mm", height=180, width=150, device="svg")
-ggsave(h_plot, file="../figures/fig_hclusters.svg", units="mm", height=90, width=150, device="svg")
-ggsave(chabund_death_plot, file="../figures/fig_chabunddeathclusters.svg", units="mm", height=90, width=150, device="svg")
+ggsave(diedprop_plot_isme_legend, file="../figures/fig_diedprop_isme_legend.svg", units="mm", height=60, width=85, device="svg")
+ggsave(diedprop_plot_isme_nolegend, file="../figures/fig_diedprop_isme_nolegend.svg", units="mm", height=60, width=85, device="svg")
+ggsave(h_plot_isme_legend, file="../figures/fig_hclusters_isme_legend.svg", units="mm", height=60, width=85, device="svg")
+ggsave(h_plot_isme_nolegend, file="../figures/fig_hclusters_isme_nolegend.svg", units="mm", height=60, width=85, device="svg")
+ggsave(chabund_death_plot_isme_nolegend, file="../figures/fig_chabunddeathclusters_isme_nolegend.svg", units="mm", height=60, width=85, device="svg")
 ```
 
 ### Statistics
@@ -765,24 +930,22 @@ incorp_num_nice <- incorp_num_nosoil %>%
          Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"))
 
 # plot
-subnum_plot <- incorp_num_nice %>% 
+subnum_plot_isme_nolegend <- incorp_num_nice %>% 
   ggplot(aes(x=substrate_num, y=count, fill=Cluster)) +
   geom_col(position="dodge", color='black') +
   scale_fill_manual(values=c("#9473c4", "#929644", "#c75d65")) +
   theme_test() +
-  theme(axis.title = element_text(size=14),
-        axis.title.x = element_blank(),
-        axis.text = element_text(size=12),
-        axis.text.x = element_blank(),
-        legend.title = element_text(size=14),
-        legend.text = element_text(size=12))
-subnum_plot
+  theme(axis.title = element_text(size=7),
+        axis.text = element_text(size=7),
+        legend.title = element_text(size=7),
+        legend.position = "none")
+subnum_plot_isme_nolegend
 ```
 
 Export figure:
 
 ```{r, eval=FALSE}
-ggsave(subnum_plot, file="../figures/fig_subnum.svg", units="mm", height=50, width=120, device="svg") 
+ggsave(subnum_plot_isme_nolegend, file="../figures/fig_subnum_isme_nolegend.svg", units="mm", height=50, width=75, device="svg") 
 ```
 
 ### Statistics
@@ -858,7 +1021,7 @@ incorp_pref_nosoil %>%
   theme(axis.text.x = element_text(angle=45, hjust=1))
 ```
 
-Nice figure:
+Nice figures:
 
 ```{r, eval=FALSE}
 # Nice names
@@ -870,25 +1033,36 @@ incorp_pref_nice <- incorp_pref_nosoil %>%
          Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
          substrate = gsub("_", " ", substrate))
 
-# plot
-subpref_plot <- incorp_pref_nice %>% 
+
+# Substrate preference
+subpref_plot_isme_legend <- incorp_pref_nice %>% 
   ggplot(aes(x=reorder(substrate, -count), y=count, fill=Cluster)) +
   geom_col(position="dodge", color='black') +
   scale_fill_manual(values=c("#9473c4", "#929644", "#c75d65")) +
   theme_test() +
-  theme(axis.title = element_text(size=14),
-        axis.title.x = element_blank(),
-        axis.text = element_text(size=12),
-        axis.text.x = element_blank(),
-        legend.title = element_text(size=14),
-        legend.text = element_text(size=12))
-subpref_plot
+  theme(axis.title = element_text(size=7),
+        axis.text = element_text(size=7),
+        legend.title = element_text(size=7),
+        legend.text = element_text(size=7))
+subpref_plot_isme_legend
+
+subpref_plot_isme_nolegend <- incorp_pref_nice %>% 
+  ggplot(aes(x=reorder(substrate, -count), y=count, fill=Cluster)) +
+  geom_col(position="dodge", color='black') +
+  scale_fill_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+        axis.text = element_text(size=7),
+        legend.title = element_text(size=7),
+        legend.position = "none")
+subpref_plot_isme_nolegend
 ```
 
 Export plot:
 
 ```{r, eval=FALSE}
-ggsave(subpref_plot, file="../figures/fig_subpref.svg", units="mm", height=50, width=120, device="svg")
+ggsave(subpref_plot_isme_legend, file="../figures/fig_subpref_isme_legend.svg", units="mm", height=50, width=75, device="svg")
+ggsave(subpref_plot_isme_nolegend, file="../figures/fig_subpref_isme_nolegend.svg", units="mm", height=50, width=75, device="svg")
 ```
 
 ### Statistics
@@ -1058,23 +1232,37 @@ abund_total0_nice <- abund_total0 %>%
          Cluster = as_factor(Cluster),
          Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"))
 
-abundtotal0_plot <- abund_total0_nice %>% 
+# Plots
+abundtotal0_isme_legend <- abund_total0_nice %>% 
   ggplot(aes(x=Soil, y=log(cluster_total), color=Cluster, shape=Cluster)) +
   scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
-  geom_jitter(height=0, width=0.2, size=3) +
+  geom_jitter(height=0, width=0.1, size=3) +
   theme_test() +
-  theme(axis.title = element_text(size=14),
-      axis.text = element_text(size=12),
-      legend.title = element_text(size=14),
+  theme(axis.title = element_text(size=7),
+      axis.text = element_text(size=7),
+      legend.title = element_text(size=7),
       axis.title.x = element_blank(),
-      legend.text = element_text(size=12))
-abundtotal0_plot
+      legend.text = element_text(size=7))
+abundtotal0_isme_legend
+
+abundtotal0_isme_nolegend <- abund_total0_nice %>% 
+  ggplot(aes(x=Soil, y=log(cluster_total), color=Cluster, shape=Cluster)) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  geom_jitter(height=0, width=0.1, size=3) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+      axis.text = element_text(size=7),
+      legend.title = element_text(size=7),
+      axis.title.x = element_blank(),
+      legend.position = "none")
+abundtotal0_isme_nolegend
 ```
 
 Export:
 
 ```{r, eval=FALSE}
-ggsave(abundtotal0_plot, file="../figures/fig_abundtotal0.svg", units="mm", width=110, height=90, device="svg")
+ggsave(abundtotal0_isme_legend, file="../figures/fig_abundtotal0_isme_legend.svg", units="mm", width=70, height=80, device="svg")
+ggsave(abundtotal0_isme_nolegend, file="../figures/fig_abundtotal0_isme_nolegend.svg", units="mm", width=70, height=80, device="svg")
 ```
 
 ### Statistics
@@ -1172,23 +1360,23 @@ abund_prop0_nice <- abund_prop0 %>%
          Cluster = as_factor(Cluster),
          Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"))
 
-prop0_plot <- abund_prop0_nice %>% 
+prop0_plot_isme_nolegend <- abund_prop0_nice %>% 
   ggplot(aes(x=Soil, y=prop, color=Cluster, shape=Cluster)) +
   scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
-  geom_jitter(height=0, width=0.2, size=3) +
+  geom_jitter(height=0, width=0.1, size=3) +
   theme_test() +
-  theme(axis.title = element_text(size=14),
-      axis.text = element_text(size=12),
-      legend.title = element_text(size=14),
+  theme(axis.title = element_text(size=7),
+      axis.text = element_text(size=7),
+      legend.title = element_text(size=7),
       axis.title.x = element_blank(),
-      legend.text = element_text(size=12))
-prop0_plot
+      legend.position = "none")
+prop0_plot_isme_nolegend
 ```
 
 Export:
 
 ```{r, eval=FALSE}
-ggsave(prop0_plot, file="../figures/fig_abundprop0.svg", units="mm", width=110, height=90, device="svg")
+ggsave(prop0_plot_isme_nolegend, file="../figures/fig_abundprop0_isme_nolegend.svg", units="mm", width=70, height=80, device="svg")
 ```
 
 ### Statistics
@@ -1270,6 +1458,7 @@ richclust_welch <- oneway.test(log(richness) ~ cluster, data=filter(rich_clust),
 # P adjustment
 p.adjust(p=c(rich1_welch$p.value, rich2_welch$p.value, rich3_welch$p.value, richclust_welch$p.value), method="holm", n=4)
 ```
+
 # Ratio parameters
 
 ## R:C
@@ -1518,22 +1707,21 @@ Nice figure:
 rcsgreff_plot <- params_greffresp %>% 
   mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
   ggplot(aes(x=r_cs, y=log(greff))) +
-  geom_point(aes(shape=Soil), size=3) +
+  geom_point(aes(shape=Soil), size=2) +
   scale_shape_manual(values=c(1,16)) +
   geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black") +
   scale_linetype_manual(values=c("dashed", "solid")) +
   theme_test() +
-  theme(axis.title = element_text(size=14),
-    axis.text = element_text(size=12),
-    legend.title = element_text(size=14),
-    legend.text = element_text(size=12))
+  theme(axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    legend.position = "none")
 rcsgreff_plot
 ```
 
 Nice figures:
 
 ```{r, eval=FALSE}
-ggsave(rcsgreff_plot, file="../figures/fig_rcsgreff.svg", units="mm", height=90, width=180, device="svg")
+ggsave(rcsgreff_plot, file="../figures/fig_rcsgreff.svg", units="mm", height=70, width=80, device="svg")
 ```
 
 #### Statistics
@@ -1653,22 +1841,21 @@ Nice figure:
 rcsresp_plot <- params_greffresp %>% 
   mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
   ggplot(aes(x=r_cs, y=mgCO2_day)) +
-  geom_point(aes(shape=Soil), size=3) +
+  geom_point(aes(shape=Soil), size=2) +
   scale_shape_manual(values=c(1,16)) +
   geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black", alpha=0.3) +
   scale_linetype_manual(values=c("dashed", "solid")) +
   theme_test() +
-  theme(axis.title = element_text(size=14),
-      axis.text = element_text(size=12),
-      legend.title = element_text(size=14),
-      legend.text = element_text(size=12))
+  theme(axis.title = element_text(size=12),
+      axis.text = element_text(size=10),
+      legend.position = "none")
 rcsresp_plot
 ```
 
 Export:
 
 ```{r, eval=FALSE}
-ggsave(rcsresp_plot, file="../figures/fig_rcsresp.svg", units="mm", height=90, width=180, device="svg")
+ggsave(rcsresp_plot, file="../figures/fig_rcsresp.svg", units="mm", height=70, width=80, device="svg")
 ```
 
 #### Statistics
@@ -1747,3 +1934,18 @@ plot(predict(net010_lm), resid(net010_lm)) # heteroskedastic
 # swtich to welch
 oneway.test(net_change ~ cluster, data=filter(net_clust, time_diff=="net030"), var.equal=FALSE)
 ```
+
+# Clusters per time point
+
+```{r}
+head(abund_total)
+abund_total %>% 
+  mutate(cluster_name = if_else(cluster == 1, "competitor", if_else(cluster==2, "scarcity", "ruderal"))) %>% 
+  group_by(Soil, Day, cluster, cluster_name) %>% 
+  summarize(cluster_total = mean(cluster_total)) %>% 
+  ggplot(aes(x=Day, y=cluster_total, shape=cluster_name, color=cluster_name)) +
+  geom_point() +
+  facet_wrap(~Soil) +
+  labs(y="total abundnace of growing taxa in cluster")
+```
+

@@ -267,22 +267,21 @@ wgresp_plot <- weightedg_resprate_tot %>%
   ungroup() %>%
   mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
   ggplot(aes(y=mgCO2_day, x=weighted_g)) +
-  geom_point(aes(shape=Soil), size=3) +
+  geom_point(aes(shape=Soil), size=2) +
   scale_shape_manual(values=c(1,20)) +
   geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black", alpha=0.3) +
   scale_linetype_manual(values=c("dashed", "solid")) +
   theme_test() +
-  theme(axis.title = element_text(size=14),
-    axis.text = element_text(size=12),
-    legend.title = element_text(size=14),
-    legend.text = element_text(size=12))
+  theme(axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    legend.position = "none")
 wgresp_plot
 ```
 
 Export:
 
 ```{r, eval=FALSE}
-ggsave(wgresp_plot, file="../figures/fig_wgresp.svg", units="mm", height=90, width=180, device="svg")
+ggsave(wgresp_plot, file="../figures/fig_wgresp.svg", units="mm", height=70, width=80, device="svg")
 ```
 
 ## Statistics
@@ -504,8 +503,8 @@ greff_df %>%
   theme_test()
 ```
 
-```{r, eval=FALSE}
-greff_plot <- greff_df %>% 
+```{r}
+greff_plot_legend <- greff_df %>% 
   mutate(Soil=if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
   ggplot(aes(x=Day, y=log(greff), linetype=Soil)) +
   geom_point(aes(shape=Soil), size=2) +
@@ -517,13 +516,28 @@ greff_plot <- greff_df %>%
       axis.text = element_text(size=12),
       legend.title = element_text(size=14),
       legend.text = element_text(size=12))
-greff_plot
+greff_plot_legend
+
+greff_plot_nolegend <- greff_df %>% 
+  mutate(Soil=if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+  ggplot(aes(x=Day, y=log(greff), linetype=Soil)) +
+  geom_point(aes(shape=Soil), size=2) +
+  scale_shape_manual(values=c(1,16)) +
+  geom_smooth(color="black") +
+  scale_linetype_manual(values=c(2,1)) +
+  theme_test() +
+  theme(axis.title = element_text(size=12),
+      axis.text = element_text(size=12),
+      legend.position = "none")
+greff_plot_nolegend
 ```
 
 Export:
 
 ```{r, eval=FALSE}
-ggsave(greff_plot, file="../figures/plot_greff.svg", units="mm", height=90, width=180, device="svg")
+ggsave(greff_plot_legend, file="../figures/plot_greff_legend.svg", units="mm", height=70, width=85, device="svg")
+
+ggsave(greff_plot_nolegend, file="../figures/plot_greff_nolegend.svg", units="mm", height=70, width=85, device="svg")
 ```
 
 ## Statistics
@@ -570,20 +584,19 @@ wggreff_plot <- greff_df %>%
   ungroup() %>% 
   mutate(Soil=if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
   ggplot(aes(x=weighted_g, y=log(greff))) +
-  geom_point(aes(shape=Soil), size=3) +
+  geom_point(aes(shape=Soil), size=2) +
   scale_shape_manual(values=c(1,16)) +
   geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black", alpha=0.3) +
   scale_linetype_manual(values=c("dashed", "solid")) +
   theme_test() +
-  theme(axis.title = element_text(size=14),
-    axis.text = element_text(size=12),
-    legend.title = element_text(size=14),
-    legend.text = element_text(size=12))
+  theme(axis.title = element_text(size=12),
+    axis.text = element_text(size=10),
+    legend.position = "none")
 wggreff_plot
 ```
 
 ```{r, eval=FALSE}
-ggsave(wggreff_plot, file="../figures/fig_wggreff.svg", units="mm", height=90, width=180, device="svg")
+ggsave(wggreff_plot, file="../figures/fig_wggreff.svg", units="mm", height=70, width=80, device="svg")
 ```
 
 #### Statistics

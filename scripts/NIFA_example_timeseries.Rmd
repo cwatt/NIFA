@@ -74,7 +74,7 @@ for (l in unique(as.character(growth_filt$label))) {
   print(graph)
   
   # Save
-  ggsave(file=paste0("../figures/suppfig_examples/growth_", l, ".png"), graph)
+  ggsave(file=paste0("../figures/suppfig_examples/growth_", l, ".svg"), graph)
 }
 
 # Death
@@ -104,7 +104,7 @@ for (l in unique(as.character(death_filt$label))) {
   print(graph)
   
   # Save
-  ggsave(file=paste0("../figures/suppfig_examples/death_", l, ".png"), graph)
+  ggsave(file=paste0("../figures/suppfig_examples/death_", l, ".svg"), graph)
 }
 ```
 

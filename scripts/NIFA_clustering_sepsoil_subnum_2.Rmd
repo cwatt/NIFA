@@ -307,7 +307,7 @@ eigenvals_meadow %>%
 
 Shoulder is at 3-4 PCs.
 
-```{r}
+```{r, eval=FALSE}
 ggsave(suppfig_pca, file="../figures/suppfig_pca.svg", units="mm", height=90, width=150, device="svg")
 ```
 
@@ -353,7 +353,10 @@ totwss_suppfig <- totwss_df %>%
       legend.title = element_text(size=14),
       legend.text = element_text(size=12))
 totwss_suppfig
+```
 
+
+```{r, eval=FALSE}
 ggsave(totwss_suppfig, file="../figures/suppfig_totwss.svg", units="mm", height=90, width=150, device="svg")
 ```
 
@@ -366,8 +369,7 @@ K-means:
 Choosing n=3 because skree plot above, want to do comparison to CSR triangle theory and previous work in lab with data from same soils, data is a single cloud anyway to cluster choice is somewhat arbritray, using as a basis for looking at how growth metrics tend to self-organize within community.
 
 ```{r}
-# Import libraries
-library(factoextra)
+# Import library
 library(cluster)
 
 # Cluster
@@ -463,15 +465,72 @@ pca_plot <- features_clust %>%
   theme_test() +
   theme(axis.title = element_text(size=14),
         axis.text = element_text(size=12),
-        legend.title = element_text(size=14),
+        legend.title = element_text(size=12),
         legend.text = element_text(size=12))
 pca_plot
+
+# without legend
+pca_plot2 <- features_clust %>% 
+  mutate(Cluster = case_when(cluster=="1" ~ "Competitor",
+                             cluster=="2" ~ "Scarcity",
+                             cluster=="3" ~ "Ruderal"),
+         Cluster = as_factor(Cluster),
+         Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
+         Soil = if_else(Soil=="Ag", "Agriculture", "Meadow")) %>% 
+  ggplot(aes(x=PC1, y=PC2)) +
+    geom_point(aes(color=Cluster, shape=Soil), size=2) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=14),
+        axis.text = element_text(size=12),
+        legend.position = "none",
+        legend.title =element_blank(),
+        legend.text = element_blank())
+pca_plot2
+
+# ISME specifications
+pca_plot_isme_legend <- features_clust %>% 
+  mutate(Cluster = case_when(cluster=="1" ~ "Competitor",
+                             cluster=="2" ~ "Scarcity",
+                             cluster=="3" ~ "Ruderal"),
+         Cluster = as_factor(Cluster),
+         Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
+         Soil = if_else(Soil=="Ag", "Agriculture", "Meadow")) %>% 
+  ggplot(aes(x=PC1, y=PC2)) +
+    geom_point(aes(color=Cluster, shape=Soil), size=2) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+        axis.text = element_text(size=7),
+        legend.title = element_text(size=7),
+        legend.text = element_text(size=7))
+pca_plot_isme_legend
+
+pca_plot_isme_nolegend <- features_clust %>% 
+  mutate(Cluster = case_when(cluster=="1" ~ "Competitor",
+                             cluster=="2" ~ "Scarcity",
+                             cluster=="3" ~ "Ruderal"),
+         Cluster = as_factor(Cluster),
+         Cluster = fct_relevel(Cluster, "Competitor", "Scarcity", "Ruderal"),
+         Soil = if_else(Soil=="Ag", "Agriculture", "Meadow")) %>% 
+  ggplot(aes(x=PC1, y=PC2)) +
+    geom_point(aes(color=Cluster, shape=Soil), size=2) +
+  scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
+  scale_shape_manual(values=c(1,16)) +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+        axis.text = element_text(size=7),
+        legend.position = "none")
+pca_plot_isme_nolegend
 ```
 
 Export figure:
 
 ```{r,  eval=FALSE}
-ggsave(pca_plot, filename="../figures/fig_pcaclusters.svg", units="mm", width=180, height=120, device="svg")
+ggsave(pca_plot_isme_legend, filename="../figures/fig_pcaclusters_isme_legend.svg", units="mm", width=85, height=85, device="svg")
+ggsave(pca_plot_isme_nolegend, filename="../figures/fig_pcaclusters_isme_nolegend.svg", units="mm", width=85, height=85, device="svg")
 ```
 
 Save combined:

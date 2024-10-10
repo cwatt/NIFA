@@ -56,21 +56,25 @@ deltaN <- death_asv %>%
 # Visualize
 
 ```{r}
-deltaN_graph <- deltaN %>% 
+deltaN_isme <- deltaN %>% 
   ggplot(aes(x=log(deltaNg), y=log(abs(deltaNd)))) +
   geom_point(size=2, shape=1) +
   geom_smooth(method="lm", color="black", linetype=2) +
-  facet_wrap(~Soil, nrow=2) +
+  facet_wrap(~Soil, nrow=2, scales="free") +
   theme_test() +
-  theme(axis.text=element_text(size=10),
-      strip.text.x = element_blank())
-deltaN_graph
-
-ggsave(deltaN_graph, file="../figures/fig_deltaNgd.svg", units="mm", width=88, device="svg")
+  theme(axis.text=element_text(size=7),
+        axis.title=element_text(size=7),
+        strip.text = element_blank())
+deltaN_isme
 
 # Stats
 cor.test(log(deltaN[deltaN$Soil=="Ag",]$deltaNg), log(abs(deltaN[deltaN$Soil=="Ag",]$deltaNd)), method="pearson")
 cor.test(log(deltaN[deltaN$Soil=="Meadow",]$deltaNg), log(abs(deltaN[deltaN$Soil=="Meadow",]$deltaNd)), method="pearson")
 ```
+
+```{r, eval=FALSE}
+ggsave(deltaN_isme, file="../figures/fig_deltaNgd_isme.svg", units="mm", width=85, height=150, device="svg")
+```
+
 
 
