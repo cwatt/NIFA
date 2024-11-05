@@ -60,10 +60,11 @@ deltaN_isme <- deltaN %>%
   ggplot(aes(x=log(deltaNg), y=log(abs(deltaNd)))) +
   geom_point(size=2, shape=1) +
   geom_smooth(method="lm", color="black", linetype=2) +
-  facet_wrap(~Soil, nrow=2, scales="free") +
+  facet_wrap(~Soil, nrow=2) +
   theme_test() +
-  theme(axis.text=element_text(size=7),
-        axis.title=element_text(size=7),
+  scale_y_continuous(n.breaks=5) +
+  theme(axis.text=element_text(size=10),
+        axis.title=element_text(size=10),
         strip.text = element_blank())
 deltaN_isme
 

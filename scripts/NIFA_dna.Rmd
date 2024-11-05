@@ -65,7 +65,7 @@ dna0_plot
 
 dna_plot <- dna_dry %>% 
   mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
-  ggplot(aes(x=Day, y=log(dna_gdrysoil), shape=Soil)) +
+  ggplot(aes(x=Day, y=dna_gdrysoil, shape=Soil)) +
   scale_shape_manual(values=c(1,16)) +
   geom_point(size=2) +
   theme_test() +

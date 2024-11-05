@@ -1363,12 +1363,10 @@ abund_prop0_nice <- abund_prop0 %>%
 prop0_plot_isme_nolegend <- abund_prop0_nice %>% 
   ggplot(aes(x=Soil, y=prop, color=Cluster, shape=Cluster)) +
   scale_color_manual(values=c("#9473c4", "#929644", "#c75d65")) +
-  geom_jitter(height=0, width=0.1, size=3) +
+  geom_jitter(height=0, width=0.1, size=2) +
   theme_test() +
   theme(axis.title = element_text(size=7),
       axis.text = element_text(size=7),
-      legend.title = element_text(size=7),
-      axis.title.x = element_blank(),
       legend.position = "none")
 prop0_plot_isme_nolegend
 ```
@@ -1376,7 +1374,7 @@ prop0_plot_isme_nolegend
 Export:
 
 ```{r, eval=FALSE}
-ggsave(prop0_plot_isme_nolegend, file="../figures/fig_abundprop0_isme_nolegend.svg", units="mm", width=70, height=80, device="svg")
+ggsave(prop0_plot_isme_nolegend, file="../figures/fig_abundprop0_isme_nolegend.svg", units="mm", width=55, height=60, device="svg")
 ```
 
 ### Statistics
@@ -1741,6 +1739,21 @@ cor.test(rcsgreff_avg[rcsgreff_avg$Soil=="Ag",]$r_cs, log(rcsgreff_avg[rcsgreff_
 cor.test(rcsgreff_avg[rcsgreff_avg$Soil=="Meadow",]$r_cs, log(rcsgreff_avg[rcsgreff_avg$Soil=="Meadow",]$greff))
 ```
 
+```{r}
+csgreff_avg <- params_greffresp %>% 
+  group_by(Soil, Day) %>% 
+  summarize(greff = mean(greff),
+            mgco2_day = mean(mgCO2_day),
+            cs = mean(cs)) %>% 
+  ungroup()
+
+# Overall
+cor.test(csgreff_avg$cs, log(csgreff_avg$greff))
+# Soils
+cor.test(csgreff_avg[csgreff_avg$Soil=="Ag",]$cs, log(csgreff_avg[csgreff_avg$Soil=="Ag",]$greff))
+cor.test(csgreff_avg[csgreff_avg$Soil=="Meadow",]$cs, log(csgreff_avg[csgreff_avg$Soil=="Meadow",]$greff))
+```
+
 
 ### Respiration rate
 
@@ -1871,6 +1884,18 @@ cor.test(rcsgreff_avg[rcsgreff_avg$Soil=="Ag",]$r_cs, rcsgreff_avg[rcsgreff_avg$
 cor.test(rcsgreff_avg[rcsgreff_avg$Soil=="Meadow",]$r_cs, rcsgreff_avg[rcsgreff_avg$Soil=="Meadow",]$mgco2_day)
 ```
 
+```{r}
+csgreff_avg
+
+# overall
+cor.test(csgreff_avg$cs, csgreff_avg$mgco2_day)
+
+# sep soils
+cor.test(csgreff_avg[csgreff_avg$Soil=="Ag",]$cs, csgreff_avg[csgreff_avg$Soil=="Ag",]$mgco2_day)
+cor.test(csgreff_avg[csgreff_avg$Soil=="Meadow",]$cs, csgreff_avg[csgreff_avg$Soil=="Meadow",]$mgco2_day)
+```
+
+
 # Net cluster changes
 
 Calculate:
@@ -1939,13 +1964,28 @@ oneway.test(net_change ~ cluster, data=filter(net_clust, time_diff=="net030"), v
 
 ```{r}
 head(abund_total)
-abund_total %>% 
-  mutate(cluster_name = if_else(cluster == 1, "competitor", if_else(cluster==2, "scarcity", "ruderal"))) %>% 
+abund_time_plot <- abund_total %>% 
+  mutate(cluster_name = case_when(cluster=="1" ~ "Competitor",
+                             cluster=="2" ~ "Scarcity",
+                             cluster=="3" ~ "Ruderal"),
+         cluster_name = as_factor(cluster_name),
+         cluster_name = fct_relevel(cluster_name, "Competitor", "Scarcity", "Ruderal")) %>% 
   group_by(Soil, Day, cluster, cluster_name) %>% 
   summarize(cluster_total = mean(cluster_total)) %>% 
-  ggplot(aes(x=Day, y=cluster_total, shape=cluster_name, color=cluster_name)) +
-  geom_point() +
+  ggplot(aes(x=Day, y=cluster_total, color=cluster_name, shape=cluster_name,)) +
+  geom_point(size=2) +
   facet_wrap(~Soil) +
-  labs(y="total abundnace of growing taxa in cluster")
+  scale_color_manual(values=c( "#9473c4", "#929644", "#c75d65")) +
+  labs(y="total abundance of growing taxa in cluster") +
+  theme_test() +
+  theme(axis.title = element_text(size=7),
+        strip.text = element_blank(),
+        axis.text = element_text(size=7),
+        legend.position = "none")
+abund_time_plot
+```
+
+```{r, eval=FALSE}
+ggsave(abund_time_plot, file="../figures/fig_abundclust_time.svg", unit="mm", width=110, height=60)
 ```
 

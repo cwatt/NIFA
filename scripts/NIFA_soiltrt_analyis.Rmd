@@ -67,7 +67,10 @@ meta_sa <- meta %>%
 
 # Phyloseq, rarefied with no int std
 physeq <- readRDS("../data_intermediate/NIFA_physeq_rare_nostd.rds")
+ntaxa(physeq)
 ```
+
+
 
 Reformat data: 
 
