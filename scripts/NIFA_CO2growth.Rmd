@@ -512,10 +512,10 @@ greff_plot_legend <- greff_df %>%
   geom_smooth(color="black") +
   scale_linetype_manual(values=c(2,1)) +
   theme_test() +
-  theme(axis.title = element_text(size=14),
-      axis.text = element_text(size=12),
-      legend.title = element_text(size=14),
-      legend.text = element_text(size=12))
+  theme(axis.title = element_text(size=8),
+      axis.text = element_text(size=8),
+      legend.title = element_text(size=8),
+      legend.text = element_text(size=8))
 greff_plot_legend
 
 greff_plot_nolegend <- greff_df %>% 
@@ -526,8 +526,8 @@ greff_plot_nolegend <- greff_df %>%
   geom_smooth(color="black") +
   scale_linetype_manual(values=c(2,1)) +
   theme_test() +
-  theme(axis.title = element_text(size=12),
-      axis.text = element_text(size=12),
+  theme(axis.title = element_text(size=8),
+      axis.text = element_text(size=8),
       legend.position = "none")
 greff_plot_nolegend
 ```
@@ -535,9 +535,9 @@ greff_plot_nolegend
 Export:
 
 ```{r, eval=FALSE}
-ggsave(greff_plot_legend, file="../figures/plot_greff_legend.svg", units="mm", height=70, width=85, device="svg")
+ggsave(greff_plot_legend, file="../figures/fig_greff_legend.svg", units="mm", height=70, width=85, device="svg")
 
-ggsave(greff_plot_nolegend, file="../figures/plot_greff_nolegend.svg", units="mm", height=70, width=85, device="svg")
+ggsave(greff_plot_nolegend, file="../figures/fig_greff_nolegend.svg", units="mm", height=70, width=85, device="svg")
 ```
 
 ## Statistics

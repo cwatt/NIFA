@@ -1702,24 +1702,36 @@ params_greffresp %>%
 Nice figure:
 
 ```{r, eval=FALSE}
-rcsgreff_plot <- params_greffresp %>% 
-  mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
-  ggplot(aes(x=r_cs, y=log(greff))) +
-  geom_point(aes(shape=Soil), size=2) +
+# rcsgreff_plot <- params_greffresp %>%
+#   mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>%
+#   ggplot(aes(x=r_cs, y=log(greff))) +
+#   geom_point(aes(shape=Soil), size=2) +
+#   scale_shape_manual(values=c(1,16)) +
+#   geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black") +
+#   scale_linetype_manual(values=c("dashed", "solid")) +
+#   theme_test() +
+#   theme(axis.title = element_text(size=12),
+#     axis.text = element_text(size=10),
+#     legend.position = "none")
+# rcsgreff_plot
+
+csgreff_plot_isme <- params_greffresp %>% 
+  mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>%
+  ggplot(aes(x=cs, y=log(greff))) +
+  geom_point(aes(shape=Soil)) +
   scale_shape_manual(values=c(1,16)) +
-  geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black") +
-  scale_linetype_manual(values=c("dashed", "solid")) +
+  geom_smooth(method="lm", color="black") +
   theme_test() +
   theme(axis.title = element_text(size=12),
     axis.text = element_text(size=10),
     legend.position = "none")
-rcsgreff_plot
+csgreff_plot_isme
 ```
 
 Nice figures:
 
 ```{r, eval=FALSE}
-ggsave(rcsgreff_plot, file="../figures/fig_rcsgreff.svg", units="mm", height=70, width=80, device="svg")
+ggsave(csgreff_plot_isme, file="../figures/fig_csgreff.svg", units="mm", height=70, width=80, device="svg")
 ```
 
 #### Statistics
@@ -1740,6 +1752,7 @@ cor.test(rcsgreff_avg[rcsgreff_avg$Soil=="Meadow",]$r_cs, log(rcsgreff_avg[rcsgr
 ```
 
 ```{r}
+# C:S
 csgreff_avg <- params_greffresp %>% 
   group_by(Soil, Day) %>% 
   summarize(greff = mean(greff),
@@ -1752,6 +1765,8 @@ cor.test(csgreff_avg$cs, log(csgreff_avg$greff))
 # Soils
 cor.test(csgreff_avg[csgreff_avg$Soil=="Ag",]$cs, log(csgreff_avg[csgreff_avg$Soil=="Ag",]$greff))
 cor.test(csgreff_avg[csgreff_avg$Soil=="Meadow",]$cs, log(csgreff_avg[csgreff_avg$Soil=="Meadow",]$greff))
+
+filter(csgreff_avg, Soil=="Meadow") %>% nrow()
 ```
 
 
@@ -1851,9 +1866,22 @@ params_greffresp %>%
 Nice figure:
 
 ```{r, eval=FALSE}
-rcsresp_plot <- params_greffresp %>% 
+# rcsresp_plot <- params_greffresp %>% 
+#   mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
+#   ggplot(aes(x=r_cs, y=mgCO2_day)) +
+#   geom_point(aes(shape=Soil), size=2) +
+#   scale_shape_manual(values=c(1,16)) +
+#   geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black", alpha=0.3) +
+#   scale_linetype_manual(values=c("dashed", "solid")) +
+#   theme_test() +
+#   theme(axis.title = element_text(size=12),
+#       axis.text = element_text(size=10),
+#       legend.position = "none")
+# rcsresp_plot
+
+csresp_plot <- params_greffresp %>% 
   mutate(Soil = if_else(Soil=="Ag", "Agricultural", "Meadow")) %>% 
-  ggplot(aes(x=r_cs, y=mgCO2_day)) +
+  ggplot(aes(x=cs, y=mgCO2_day)) +
   geom_point(aes(shape=Soil), size=2) +
   scale_shape_manual(values=c(1,16)) +
   geom_smooth(aes(group=Soil, linetype=Soil), method="lm", color="black", alpha=0.3) +
@@ -1862,13 +1890,13 @@ rcsresp_plot <- params_greffresp %>%
   theme(axis.title = element_text(size=12),
       axis.text = element_text(size=10),
       legend.position = "none")
-rcsresp_plot
+csresp_plot
 ```
 
 Export:
 
 ```{r, eval=FALSE}
-ggsave(rcsresp_plot, file="../figures/fig_rcsresp.svg", units="mm", height=70, width=80, device="svg")
+ggsave(csresp_plot, file="../figures/fig_csresp.svg", units="mm", height=70, width=80, device="svg")
 ```
 
 #### Statistics
@@ -1893,6 +1921,8 @@ cor.test(csgreff_avg$cs, csgreff_avg$mgco2_day)
 # sep soils
 cor.test(csgreff_avg[csgreff_avg$Soil=="Ag",]$cs, csgreff_avg[csgreff_avg$Soil=="Ag",]$mgco2_day)
 cor.test(csgreff_avg[csgreff_avg$Soil=="Meadow",]$cs, csgreff_avg[csgreff_avg$Soil=="Meadow",]$mgco2_day)
+
+filter(csgreff_avg, Soil=="Ag") %>% nrow()
 ```
 
 
